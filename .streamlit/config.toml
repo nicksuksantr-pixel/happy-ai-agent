@@ -1,0 +1,20 @@
+[theme]
+base = "light"
+primaryColor = "#FB923C"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#FFF7ED"
+textColor = "#1F2937"
+font = "sans serif"
+
+[server]
+headless = true
+port = 8501
+
+[browser]
+gatherUsageStats = false
+
+[client]
+# ซ่อน Streamlit's default toolbar (Deploy button + hamburger menu ⋮)
+# "viewer" = ซ่อนหมด (เหมาะกับ end-user) | "developer" = แสดงทุกปุ่ม
+toolbarMode = "viewer"
+showSidebarNavigation = false

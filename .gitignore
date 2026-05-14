@@ -1,0 +1,41 @@
+# Credentials — NEVER commit
+*.json
+!package.json
+!.streamlit/*.json
+service-account*.json
+credentials*.json
+
+# Sessions (user data)
+sessions/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Logs
+*.log
+
+# PyInstaller build artifacts (large — 316 MB + 73 MB)
+dist/
+build/
+
+# Backups
+*.bak
+
+# Local auth (defense in depth — real file lives in ~/.happy/)
+.happy/
