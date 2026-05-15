@@ -7,14 +7,15 @@ datas = [('app.py', '.'), ('agents.py', '.'), ('auth.py', '.'), ('pipeline.py', 
 binaries = []
 hiddenimports = []
 datas += copy_metadata('streamlit')
-hiddenimports += collect_submodules('google.genai')
-hiddenimports += collect_submodules('google.auth')
-tmp_ret = collect_all('streamlit')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-tmp_ret = collect_all('pygments')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-# Critical: collect entire ASGI stack — PyInstaller missed these on its own
-for _pkg in ('starlette', 'uvicorn', 'anyio', 'sniffio', 'h11', 'websockets'):
+datas += copy_metadata('google-genai')
+
+# Fix 2026-05-15: ใช้ collect_all แทน collect_submodules สำหรับ google.genai
+# (collect_submodules ใส่แต่ module names ใน hiddenimports — ไม่ copy ไฟล์ .py เข้า bundle
+#  → ตอน runtime import เจอ module name แต่ไม่มีไฟล์ → ImportError)
+for _pkg in ('google.genai', 'google.auth', 'google.api_core',
+             'streamlit', 'pygments',
+             # ASGI stack — PyInstaller missed these on its own
+             'starlette', 'uvicorn', 'anyio', 'sniffio', 'h11', 'websockets'):
     try:
         _ret = collect_all(_pkg)
         datas += _ret[0]; binaries += _ret[1]; hiddenimports += _ret[2]
