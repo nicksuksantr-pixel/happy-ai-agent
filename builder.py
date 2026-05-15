@@ -97,11 +97,29 @@ def detect_project_type(files: dict) -> str:
     - python: มีไฟล์ .py ที่ไม่ใช่ test → main + (optionally) test files
     - web: มี .html — wrap ด้วย pywebview launcher ตอน build .exe
     - unknown: ไม่มีทั้งคู่
+
+    Fix Bug 19 (Coddy #5 2026-05-15): ถ้ามีทั้ง .py + .html → prefer "web"
+    ถ้า HTML content ใหญ่กว่า Python (AI มักเขียน main.py throwaway สำหรับ web project
+    เช่น metadata script ที่ไม่ได้รัน). Heuristic: HTML chars > 2 * py chars และ HTML > 2 KB
     """
     has_main_py = any(
         name.endswith(".py") and not _is_test_file(name) for name in files
     )
     has_html = any(name.endswith(".html") for name in files)
+
+    if has_main_py and has_html:
+        html_chars = sum(
+            len(files[n]) if isinstance(files[n], str) else 0
+            for n in files if n.endswith(".html")
+        )
+        py_chars = sum(
+            len(files[n]) if isinstance(files[n], str) else 0
+            for n in files if n.endswith(".py") and not _is_test_file(n)
+        )
+        # HTML ครองงาน → ถือว่า web project (Python = noise)
+        if html_chars > max(py_chars * 2, 2000):
+            return "web"
+
     if has_main_py:
         return "python"
     if has_html:

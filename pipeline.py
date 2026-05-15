@@ -65,8 +65,10 @@ def save_phase_output(session_path, phase_index, phase_id, content):
 
 
 # Retry mechanism — กัน Vertex AI server disconnect / 503 / timeout
-MAX_RETRIES = 3
-RETRY_DELAYS = [5, 15, 30]  # exponential-ish backoff (วินาที)
+MAX_RETRIES = 5  # Bug 21 fix (Coddy #5): bumped from 3 → 5 — Pro 3.1 demand spikes need more attempts
+RETRY_DELAYS = [5, 15, 30, 60, 120]  # exponential-ish backoff (วินาที) — last attempt waits 2 min
+# Bug 21: เพิ่ม delay สำหรับ capacity overload (503/UNAVAILABLE) — Google capacity spike มัก clear ใน 3-5 นาที
+CAPACITY_DELAYS = [30, 120, 300, 300, 300]  # 30s → 2min → 5min → 5min → 5min
 _TRANSIENT_PATTERNS = (
     "server disconnected",
     "503",
@@ -79,12 +81,23 @@ _TRANSIENT_PATTERNS = (
     # Fix Bug 8: ถือว่า empty/blocked response เป็น transient ให้ retry
     "empty response",
     "blocked response",
+    # Bug 21: explicit capacity overload markers
+    "overloaded",
+    "high demand",
 )
+# Subset ที่บ่งบอก capacity issue ชัดเจน → ใช้ CAPACITY_DELAYS (รอยาวกว่า)
+_CAPACITY_PATTERNS = ("503", "unavailable", "overloaded", "high demand")
 
 
 def _is_transient(err: Exception) -> bool:
     msg = str(err).lower()
     return any(p in msg for p in _TRANSIENT_PATTERNS)
+
+
+def _is_capacity_overload(err: Exception) -> bool:
+    """503/UNAVAILABLE/overloaded — Google capacity issue, ใช้ delay ยาวกว่า"""
+    msg = str(err).lower()
+    return any(p in msg for p in _CAPACITY_PATTERNS)
 
 
 # Fix Bug 8: validate response — กัน silent skip ตอน Gemini ส่ง empty / blocked output
@@ -151,7 +164,9 @@ def _validate_response(response, agent_label: str) -> str:
 
 
 def _call_with_retry(fn, *args, **kwargs):
-    """เรียก Vertex AI API พร้อม retry สำหรับ transient errors"""
+    """เรียก Gemini API พร้อม retry สำหรับ transient errors.
+    Bug 21 fix (Coddy #5): แยก delay สำหรับ capacity overload (503) — ใช้ CAPACITY_DELAYS
+    ที่ยาวกว่า เพราะ Google capacity spike clear ช้า (~3-5 นาที)"""
     last_err = None
     for attempt in range(MAX_RETRIES + 1):
         try:
@@ -160,7 +175,15 @@ def _call_with_retry(fn, *args, **kwargs):
             last_err = e
             if attempt >= MAX_RETRIES or not _is_transient(e):
                 raise
-            delay = RETRY_DELAYS[min(attempt, len(RETRY_DELAYS) - 1)]
+            # เลือก delay ตาม error type
+            if _is_capacity_overload(e):
+                delay = CAPACITY_DELAYS[min(attempt, len(CAPACITY_DELAYS) - 1)]
+                _safe_log(f"[capacity-503] attempt {attempt+1}/{MAX_RETRIES}: "
+                          f"Google overloaded, waiting {delay}s before retry — {str(e)[:120]}")
+            else:
+                delay = RETRY_DELAYS[min(attempt, len(RETRY_DELAYS) - 1)]
+                _safe_log(f"[transient] attempt {attempt+1}/{MAX_RETRIES}: "
+                          f"retry in {delay}s — {str(e)[:120]}")
             time.sleep(delay)
     raise last_err
 
