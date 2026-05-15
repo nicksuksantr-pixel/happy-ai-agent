@@ -379,6 +379,86 @@ After Phase A confirmed by real-world use, planned work:
 6. 💰 Token-cost analysis — Dispatch pattern กิน ~1M tokens (20% ของ 5M) → แนะ file-based handoff
 7. 🔄 ออกแบบ Cross-Session Sync pattern นี้ — ใช้ HANDOFF.md เป็น SSOT
 
+### 📋 Session Log — Coss (2026-05-15 — Round 2: Reconciliation + Onboarding System)
+
+ทักทาย Coss/Coddy รุ่นถัดไป + นิก 👋 — session นี้ทำต่อจาก round 1 (ด้านบน) หลัง Coddy #1 + #2 เขียน Session Logs เสร็จ
+
+#### 🔍 Analysis ที่ทำใน round 2
+
+1. ✅ **อ่าน + merge 3 perspectives** — Coss (round 1) + Coddy #1 (insider) + Coddy #2 (outsider)
+2. ✅ **เขียน Reconciliation table** — 6 จุดเห็นตรงกัน + 5 จุด Coddy #1 vs #2 ต่างกัน + 5 จุด Coss vs Coddy
+3. ✅ **เขียน Pending list ครบ 13 items** — เรียง P0→P3 พร้อมระบุที่มา
+4. ✅ **5 Key Insights** จาก Multi-Perspective process
+5. ✅ **สร้าง ONBOARD_NEW_CODDY.md** (268 บรรทัด) + **ONBOARD_NEW_COSS.md** (325 บรรทัด)
+6. ✅ **Sudoku solver test prompt** สำหรับ P1.1 verify
+
+#### 💡 Strategic Decisions ทำใน round นี้
+
+| Topic | Decision | เหตุผล |
+|---|---|---|
+| Multi-perspective pattern | ✅ Adopt + scale | Coddy #2 catch 5 blind spots ของ Coddy #1 — value clear |
+| Context architecture | ✅ Cumulative > Selective | Coddy #1 ใช้ + data prove + Coddy #2 confirm |
+| state.py refactor | ❌ Skip | Coddy แก้ทีละจุดผ่าน test แล้ว — pragmatic wins |
+| Build .exe `sys.executable` | ⚠️ Still pending verify | Coddy #1 แก้ pytest crash อาจไม่ใช่ root cause เดียวกัน |
+| Git init | ✅ P0 done (commit `da7fdff`) | Coddy #2 catch — risk สูง ทำเสร็จแล้ว |
+| Token-saving file handoff | ✅ Replace Dispatch pattern | Dispatch กิน ~1M tokens (20% quota), file-based กิน ~15K (0.3%) |
+
+#### 🎯 Sub-Patterns ที่สร้างใหม่ใน round นี้
+
+1. **Cross-Session Sync v1** — Multi-Perspective Pattern กฎ "ห้าม reconcile ก่อน Coddy logs ครบ"
+2. **ONBOARD_NEW_*.md** — onboarding docs สำหรับ session ใหม่ (Coddy + Coss แยกกัน)
+3. **Backup discipline** — commit ทุก task ปิด + update HANDOFF.md inline
+4. **File-based handoff** แทน Dispatch — ลด token 70%+ ต่อ round
+
+#### ⚠️ Risks ที่ flag เพิ่มใน round นี้
+
+| Risk | Impact | Mitigation |
+|---|---|---|
+| HANDOFF.md scaling (>700 บรรทัด) | Onboarding cost ↑ | P3.2 archive — ทำเมื่อถึง threshold |
+| Coss 1-sided bias ถ้าไม่รอ Coddy logs | Decision drift | Discipline ใน ONBOARD_NEW_COSS.md |
+| Coddy session context ใกล้เต็ม (83%) | Quality drop | ใช้ ONBOARD restart pattern |
+| Build .exe verify ยังไม่ confirm | False "Phase A complete" | P1.3 ใน Pending |
+
+#### 🎯 ที่ทีมควรทำต่อ (ตาม Pending list ที่ merge แล้ว)
+
+- 🥇 **P1.1 Sudoku solver test** — เพิ่ง brief Nick ไปแล้ว, รอผลทดสอบ
+- 🥈 P1.2 + P1.3 — verify download bridge + Build .exe ใน frozen mode
+- 🥉 P2 series (pattern audit, TPM UI, fluff self-score, antivirus)
+- 🏅 P3 (Phase B Inno Setup, archive HANDOFF, task-type detection)
+
+#### 😟 Bias / Limitations ที่คอส flag ตัวเอง
+
+- คอสไม่ได้ดู git log หรือ working tree จริง — analysis จาก HANDOFF + Session Logs อย่างเดียว
+- **Build .exe `sys.executable` fix** ที่คอสเสนอ — Coddy #1 ใช้ approach อื่น (`--console` + skip pytest) — ยังไม่ verify ว่าแก้ root cause เดียวกัน. P1.3 ต้องเปิด HAPPY.exe ทดสอบจริง
+- Multi-Coddy pattern เพิ่งทำครั้งแรก — work ครั้งนี้ดี แต่ยังไม่มี long-term data
+- ไม่ได้ตรวจว่า `git init` "Reinitialized existing" หมายความว่าอย่างไร (อาจมี `.git` อยู่แล้ว → section 6 ของ HANDOFF ดู outdated)
+
+#### 💭 Message ส่ง Coss + Coddy รุ่นถัดไป
+
+**To Coss next:**
+- Onboarding ใน `ONBOARD_NEW_COSS.md` ครบทุก discipline แล้ว — อ่านก่อนเริ่ม
+- Multi-Perspective Pattern พิสูจน์ value แล้ว 1 รอบ — เก็บไว้ + ปรับตามเวลา
+- ระวัง HANDOFF.md scaling — Round 2 เพิ่ม ~300 บรรทัด, ตอนนี้ ~960 บรรทัดแล้ว ⚠️ **เกิน threshold 700 แล้ว** → archive priority สูงขึ้น
+- ถ้านิกขอ reconcile แต่ Coddy logs ยังไม่ครบ — ปฏิเสธอย่างนุ่มนวล + เสนอรอ (มี discipline ใน ONBOARD แล้ว)
+
+**To Coddy next:**
+- ตอน Coddy #1 หรือ #2 context เต็ม → ใช้ `ONBOARD_NEW_CODDY.md` restart fresh
+- Sudoku test ของ Nick = P1.1 verify — ต้องรายงานกลับ 5 metrics:
+  1. Token peak (target 100-150K)
+  2. Output quality (comments, edge cases)
+  3. Tester verdict (PLAYABLE/BROKEN)
+  4. Judge score
+  5. Download + Build .exe ทำงานไหม
+- ถ้าเจอ blocker → flag ใน HANDOFF.md Pending list ทันที (อย่ารอ Session Log)
+
+**To Nick:**
+- Token cost ของ pattern ใหม่นี้ ~1-2% ต่อ session = คุ้มมากๆ เทียบกับ Dispatch
+- HANDOFF.md กำลังโต — archive ในรอบต่อไป (P3.2)
+- ONBOARD docs ใช้ได้ทันที — ครั้งหน้าแค่บอกใหม่ "อ่าน ONBOARD_NEW_CODDY.md" (หรือ COSS.md) → จบ
+
+ฝากนิก 🤝 — Coss (Round 2, 2026-05-15)
+
+
 ### 🛠️ Session Log — Coddy #1 (2026-05-15)
 
 ทักทายคอสครับ 👋 ขอเล่าวันนี้แบบเพื่อนคุยกัน ไม่ใช่ status report
