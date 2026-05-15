@@ -157,12 +157,21 @@ class _JSApi:
 
 
 # JS ที่ inject เข้า webview — intercept คลิกปุ่ม download → ส่ง blob ไป Python
+#
+# Background bug fix (P1.2 / 2026-05-15 — Coddy #4):
+# Streamlit's st.download_button calls m({...}).click() on a <a> created via
+# document.createElement('a') ที่ "ไม่ได้ appendChild" เข้า DOM. Click event บน
+# DOM-less anchor ไม่ bubble ไปถึง document → addEventListener('click', ...) ไม่ fire
+# → WebView2 ไม่มี native download UI → ดาวน์โหลดเงียบๆ ไม่มีอะไรเกิดขึ้น
+# Fix: patch HTMLAnchorElement.prototype.click — intercept method โดยตรง
+# (ไม่ต้องพึ่ง DOM bubbling)
 _DOWNLOAD_BRIDGE_JS = r"""
 (function() {
     if (window.__happy_dl_installed) return;
     window.__happy_dl_installed = true;
 
     function showToast(msg, isError) {
+        if (!document.body) return;  // before DOMContentLoaded
         let t = document.getElementById('__happy_toast');
         if (!t) {
             t = document.createElement('div');
@@ -177,15 +186,45 @@ _DOWNLOAD_BRIDGE_JS = r"""
         window.__happy_toast_timer = setTimeout(() => { t.style.display = 'none'; }, 4000);
     }
 
-    async function interceptDownload(e) {
-        const a = e.target.closest('a[download], a[href^="blob:"], a[href^="data:"]');
-        if (!a) return;
-        e.preventDefault();
-        e.stopPropagation();
-        const filename = a.getAttribute('download') || 'happy_download.bin';
-        showToast('📥 กำลังบันทึก ' + filename + ' ...');
+    function parseContentDisposition(cd) {
+        // Server ส่งชื่อไฟล์จริงผ่าน header นี้ (Streamlit ใช้แบบ filename="..." plain quoted)
+        // รองรับทั้ง RFC 5987 (filename*=UTF-8''...) และ filename="..." / filename=...
+        if (!cd) return '';
+        let m = cd.match(/filename\*=UTF-8''([^;\r\n]+)/i);
+        if (m) {
+            try { return decodeURIComponent(m[1].trim()); }
+            catch (e) { return m[1].trim(); }
+        }
+        m = cd.match(/filename="([^"]+)"/i) || cd.match(/filename=([^;\r\n]+)/i);
+        return m ? m[1].trim() : '';
+    }
+
+    function fallbackFilenameFromUrl(href) {
         try {
-            const resp = await fetch(a.href);
+            const u = new URL(href, window.location.origin);
+            const last = (u.pathname.split('/').pop() || '').split('?')[0];
+            return last || 'happy_download.bin';
+        } catch (e) {
+            return 'happy_download.bin';
+        }
+    }
+
+    async function handleDownload(href, anchorDownloadAttr) {
+        showToast('📥 กำลังเตรียมไฟล์ ...');
+        try {
+            const resp = await fetch(href);
+            if (!resp.ok) {
+                showToast('❌ โหลดไฟล์ไม่ได้: HTTP ' + resp.status, true);
+                return;
+            }
+            // เลือกชื่อไฟล์: Content-Disposition (server-side, แม่นสุด)
+            //   → anchor's download attribute (ถ้าไม่ว่าง)
+            //   → URL pathname (hash — last resort)
+            let filename = parseContentDisposition(resp.headers.get('Content-Disposition'));
+            if (!filename && anchorDownloadAttr) filename = anchorDownloadAttr;
+            if (!filename) filename = fallbackFilenameFromUrl(href);
+
+            showToast('📥 กำลังบันทึก ' + filename + ' ...');
             const blob = await resp.blob();
             const reader = new FileReader();
             reader.onload = async () => {
@@ -203,11 +242,39 @@ _DOWNLOAD_BRIDGE_JS = r"""
             };
             reader.readAsDataURL(blob);
         } catch (err) {
-            showToast('❌ เกิดข้อผิดพลาด: ' + err.message, true);
+            showToast('❌ เกิดข้อผิดพลาด: ' + (err && err.message || err), true);
         }
     }
 
-    document.addEventListener('click', interceptDownload, true);
+    // [1] Prototype patch — intercept Streamlit's programmatic a.click() on DOM-less anchors.
+    // Streamlit's createDownloadLinkElement() returns <a> created via document.createElement('a')
+    // โดยไม่ appendChild → .click() ไม่ bubble ไป document → DOM event listener จับไม่ได้
+    const __origAnchorClick = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function() {
+        try {
+            const href = this.href || '';
+            const hasDownload = this.hasAttribute('download');
+            // Intercept ถ้าเป็น download link, blob:, data:, หรือ Streamlit /media/ path
+            const isStreamlitMedia = href.indexOf('/media/') !== -1;
+            if (hasDownload || href.startsWith('blob:') || href.startsWith('data:') || isStreamlitMedia) {
+                handleDownload(href, this.getAttribute('download') || '');
+                return;
+            }
+        } catch (e) {
+            // fall through to original behavior
+        }
+        return __origAnchorClick.apply(this, arguments);
+    };
+
+    // [2] DOM event listener — defense in depth สำหรับ <a> ที่อยู่ใน DOM จริง
+    // (เช่น link ปกติที่ user คลิกเอง — ไม่ผ่าน .click() programmatic)
+    document.addEventListener('click', function(e) {
+        const a = e.target && e.target.closest && e.target.closest('a[download], a[href^="blob:"], a[href^="data:"]');
+        if (!a) return;
+        e.preventDefault();
+        e.stopPropagation();
+        handleDownload(a.href || '', a.getAttribute('download') || '');
+    }, true);
 })();
 """
 

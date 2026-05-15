@@ -14,6 +14,73 @@ from typing import Tuple, Optional
 from extractor import extract_from_session
 
 
+# Fix P1.3 (2026-05-15 Coddy #4): หา python.exe จริง — ห้ามใช้ sys.executable ใน frozen mode
+# Background: ใน HAPPY.exe (PyInstaller frozen), sys.executable = HAPPY.exe ไม่ใช่ python.exe
+# → subprocess.run([HAPPY.exe, "-m", "PyInstaller", ...]) พังเงียบๆ หรือเปิด HAPPY.exe ซ้อนเอง
+# → Build .exe ปุ่มกดแล้วไม่มีอะไรเกิดขึ้น
+_PYTHON_EXE_CACHE: Optional[str] = None
+
+
+def _looks_like_python(path: str) -> bool:
+    """Verify ว่า path เป็น real Python interpreter (ไม่ใช่ HAPPY.exe ที่ rename)"""
+    try:
+        r = subprocess.run(
+            [path, "-c", "import sys; print('PYOK', sys.version_info[0])"],
+            capture_output=True, timeout=5, text=True
+        )
+        return r.returncode == 0 and "PYOK" in (r.stdout or "")
+    except Exception:
+        return False
+
+
+def _find_python_executable() -> Optional[str]:
+    """หา python.exe จริงสำหรับ subprocess — ไม่ใช้ sys.executable เมื่ออยู่ใน frozen exe.
+
+    Search order:
+    1. NOT frozen → sys.executable (เราเป็น python interpreter อยู่แล้ว)
+    2. py.exe Windows launcher (handle versions)
+    3. PATH lookup (python.exe / python3.exe)
+    4. Common install locations
+
+    Returns: path to python.exe — หรือ None ถ้าหาไม่เจอ
+    """
+    global _PYTHON_EXE_CACHE
+    if _PYTHON_EXE_CACHE:
+        return _PYTHON_EXE_CACHE
+
+    if not getattr(sys, "frozen", False):
+        _PYTHON_EXE_CACHE = sys.executable
+        return _PYTHON_EXE_CACHE
+
+    # Frozen mode — หา python ภายนอก
+    candidates: list = []
+
+    # 1. py.exe (Windows Python Launcher) — ปลอดภัยสุด
+    py_launcher = shutil.which("py")
+    if py_launcher:
+        candidates.append(py_launcher)
+
+    # 2. PATH lookup
+    for name in ("python.exe", "python3.exe", "python"):
+        found = shutil.which(name)
+        if found and found not in candidates:
+            candidates.append(found)
+
+    # 3. Common Windows install paths
+    user_home = Path.home()
+    for ver in ("313", "312", "311", "310", "39"):
+        candidates.append(str(user_home / "AppData" / "Local" / "Programs" / "Python" / f"Python{ver}" / "python.exe"))
+        candidates.append(f"C:/Python{ver}/python.exe")
+
+    # Verify แต่ละ candidate
+    for c in candidates:
+        if c and Path(c).exists() and _looks_like_python(c):
+            _PYTHON_EXE_CACHE = c
+            return c
+
+    return None
+
+
 def _is_test_file(name: str) -> bool:
     """ไฟล์ test (test_*.py / *_test.py / tests.py / conftest.py)
     Fix Bug 6: test files ไม่ควรถูกเลือกเป็น main ของ exe — pytest ใน frozen windowed mode
@@ -73,16 +140,19 @@ def find_main_python_file(files: dict) -> Optional[str]:
 def _ensure_pkg_installed(pkg_import_name: str, pip_name: Optional[str] = None) -> Tuple[bool, str]:
     """ตรวจสอบ + auto-install package ถ้ายังไม่มี"""
     pip_name = pip_name or pkg_import_name
+    py = _find_python_executable()
+    if not py:
+        return False, "ไม่เจอ Python interpreter บนเครื่อง — ต้องลง Python 3.11+ ก่อน"
     try:
         subprocess.run(
-            [sys.executable, "-c", f"import {pkg_import_name}"],
+            [py, "-c", f"import {pkg_import_name}"],
             check=True, capture_output=True, timeout=10
         )
         return True, "already installed"
     except Exception:
         try:
             subprocess.run(
-                [sys.executable, "-m", "pip", "install", pip_name],
+                [py, "-m", "pip", "install", pip_name],
                 check=True, capture_output=True, timeout=180, text=True
             )
             return True, "installed"
@@ -128,6 +198,9 @@ def build_exe_from_session(session_path: Path, progress_cb=None) -> Tuple[bool, 
         return False, "ไม่เจอไฟล์ Python (.py) ใน session", None, None
 
     _progress(f"📦 เตรียม PyInstaller...")
+    py = _find_python_executable()
+    if not py:
+        return False, "ไม่เจอ Python interpreter — ต้องลง Python 3.11+ ที่ python.org ก่อน Build .exe", None, None
     ok, msg = ensure_pyinstaller_installed()
     if not ok:
         return False, f"PyInstaller ลงไม่ได้: {msg}", None, None
@@ -143,15 +216,49 @@ def build_exe_from_session(session_path: Path, progress_cb=None) -> Tuple[bool, 
         exe_name = Path(main_file).stem
         _progress(f"🔨 กำลัง build {exe_name}.exe ... (~30-60 วินาที)")
 
-        # Fix Bug 6: ใช้ --console แทน --windowed
-        # --windowed สร้าง exe ที่ไม่มี console → sys.stderr=None → ทุก lib ที่ใช้ stderr.fileno()
-        # (pytest faulthandler, logging.StreamHandler, etc.) จะ crash
-        # --console จะมี console window แต่ปลอดภัยกว่าและ error visible ได้
+        # Fix Bug 16 (2026-05-15 Coddy #4): --windowed + runtime hook redirect stdio
+        # ก่อนหน้านี้ Coddy #1 ใช้ --console (Bug 6) กัน sys.stderr=None crash —
+        # แต่ console window ดำๆ ขึ้นทุกครั้ง user double-click → UX ห่วย
+        # Fix ที่ดีกว่า: --windowed (ไม่มี console) + inject runtime hook ที่ patch
+        # sys.stdout/stderr/stdin ก่อน user code รัน → ไม่มี crash + ไม่มี console
+        runtime_hook = tmp_path / "_happy_stdio_hook.py"
+        # Belt-and-suspenders:
+        #   (1) redirect None stdio → NUL (กัน user code crash ใน --windowed mode)
+        #   (2) ShowWindow(SW_HIDE) — ซ่อน console window ถ้ามี (กันกรณี --windowed ไม่ apply)
+        # Nick's directive 2026-05-15: console ไม่ต้องโชว์ — ทำงานพื้นหลังก็พอ
+        runtime_hook.write_text(
+            'import sys, os\n'
+            '# (1) Redirect None stdio for --windowed mode\n'
+            'try:\n'
+            '    _nul_w = open(os.devnull, "w")\n'
+            '    if sys.stdout is None: sys.stdout = _nul_w\n'
+            '    if sys.stderr is None: sys.stderr = _nul_w\n'
+            'except Exception: pass\n'
+            'try:\n'
+            '    if sys.stdin is None: sys.stdin = open(os.devnull, "r")\n'
+            'except Exception: pass\n'
+            '# (2) Hide console window — defensive fallback if --windowed didnt get applied\n'
+            'try:\n'
+            '    import ctypes\n'
+            '    _hwnd = ctypes.windll.kernel32.GetConsoleWindow()\n'
+            '    if _hwnd:\n'
+            '        ctypes.windll.user32.ShowWindow(_hwnd, 0)  # SW_HIDE\n'
+            '        try:\n'
+            '            _nul = open(os.devnull, "w")\n'
+            '            sys.stdout = _nul\n'
+            '            sys.stderr = _nul\n'
+            '        except Exception: pass\n'
+            'except Exception: pass\n',
+            encoding="utf-8",
+        )
+
+        # Fix P1.3: ใช้ py (real python) ไม่ใช่ sys.executable (HAPPY.exe ใน frozen mode)
         cmd = [
-            sys.executable, "-m", "PyInstaller",
-            "--console",
+            py, "-m", "PyInstaller",
+            "--windowed",       # no console window — clean UX for end user
             "--onefile",
             "--noconfirm",
+            "--runtime-hook", str(runtime_hook),  # fix None stdio in windowed mode
             "--name", exe_name,
             "--distpath", str(tmp_path / "dist"),
             "--workpath", str(tmp_path / "build"),
@@ -225,6 +332,9 @@ def _build_web_exe(files: dict, progress_cb) -> Tuple[bool, str, Optional[bytes]
         return False, "ไม่เจอไฟล์ .html ใน output", None, None
 
     progress_cb(f"📦 เตรียม PyInstaller + pywebview...")
+    py = _find_python_executable()
+    if not py:
+        return False, "ไม่เจอ Python interpreter — ต้องลง Python 3.11+ ที่ python.org ก่อน Build .exe", None, None
     ok, msg = ensure_pyinstaller_installed()
     if not ok:
         return False, f"PyInstaller ลงไม่ได้: {msg}", None, None
@@ -265,8 +375,9 @@ def _build_web_exe(files: dict, progress_cb) -> Tuple[bool, str, Optional[bytes]
         progress_cb(f"🔨 กำลัง build {exe_name}.exe ... (~60-90 วินาที)")
 
         # PyInstaller cmd — bundle all web assets as data files
+        # Fix P1.3: ใช้ py (real python) ไม่ใช่ sys.executable (HAPPY.exe ใน frozen mode)
         cmd = [
-            sys.executable, "-m", "PyInstaller",
+            py, "-m", "PyInstaller",
             "--windowed",        # web app = no console (pywebview owns window)
             "--onefile",
             "--noconfirm",
