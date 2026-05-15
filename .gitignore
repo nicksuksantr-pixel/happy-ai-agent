@@ -36,6 +36,10 @@ build/
 
 # Backups
 *.bak
+*.bak[0-9]*
+
+# Test screenshots — regeneratable by running ui_verify.py / bug5_*.py
+ui_screenshots/
 
 # Local auth (defense in depth — real file lives in ~/.happy/)
 .happy/

@@ -836,13 +836,19 @@ div[data-baseweb="popover"][data-popover-placement] {
 [data-testid="stStatusWidget"] { display: none !important; }
 .stSpinner { opacity: 0.7 !important; }
 
-/* ซ่อน Streamlit toolbar ทั้งหมด (Deploy button + hamburger menu) */
-[data-testid="stToolbar"],
+/* Fix Bug 5: ซ่อนเฉพาะ Deploy/hamburger — ไม่ซ่อน stToolbar (มี stExpandSidebarButton)
+   หรือ stHeader (เป็น container ของ toolbar) ไม่งั้น user กดเปิด sidebar ที่ collapse ไม่ได้ */
 [data-testid="stToolbarActions"],
 [data-testid="stDeployButton"],
 [data-testid="stMainMenu"],
-.stDeployButton,
-header[data-testid="stHeader"] { display: none !important; }
+[data-testid="stMainMenuButton"],
+.stDeployButton { display: none !important; }
+
+/* ทำ header + toolbar โปร่งใส — ให้ sidebar toggle ยังเห็นแต่ไม่กินที่ */
+header[data-testid="stHeader"],
+[data-testid="stToolbar"] {
+    background: transparent !important;
+}
 
 /* บางครั้ง Streamlit ใส่ "Made with Streamlit" footer */
 footer[data-testid="stFooter"] { display: none !important; }
@@ -866,8 +872,11 @@ def init_state():
         "api_key": "",                # current key in memory (อาจ load จาก config)
         "available_models": [],
         # pipeline settings — default ปลอดภัยกับ free tier + คุณภาพสูง
-        "model": "gemini-2.5-pro",
-        "delay": 60,             # 60 วินาที = ปลอดภัย free tier 15 RPM
+        # gemini-3.1-flash-lite-preview: input 1M / output 65K, TPM=250K combined, RPM=15, RPD=500
+        # delay 45s → 1.33 req/min ≈ 83% TPM ใช้ได้ (กัน 429 hit แม้ input + output รวมโต)
+        # + TPM watcher ใน pipeline จะ auto-throttle ถ้าใกล้ TPM ceiling
+        "model": "gemini-3.1-flash-lite-preview",
+        "delay": 45,             # 45 วินาที = 1.33 req/min (TPM safe @ ~83%)
         "judge_threshold": 100,  # คะแนนผ่าน = 100/100 (เข้มงวดสุด)
         "max_judge_loops": 5,
         "pipeline_mode": "quick",
@@ -981,11 +990,24 @@ with st.sidebar:
         st.session_state.page = "settings"
         st.rerun()
 
-    # ปุ่มกลับไปหน้างานที่กำลังทำ — ขึ้นเฉพาะตอนมี pipeline รันอยู่จริง
-    if st.session_state.get("running") and st.session_state.get("current_session_path"):
-        if st.button("📺 ดูงานที่กำลังทำ", use_container_width=True, type="primary"):
-            st.session_state.page = "running"
-            st.rerun()
+    # Fix Bug 2: ปุ่มกลับไปหน้างาน — เช็คจาก thread alive จริง แทน 'running' flag
+    # ที่ stale (running flag set False เฉพาะตอน page_running drain queue เห็น done event)
+    # ถ้า user สลับไปหน้าอื่นตอน pipeline จบ → running ยัง True แต่ thread ตายแล้ว
+    _sp_nav = st.session_state.get("current_session_path")
+    if _sp_nav:
+        _t_nav = st.session_state.get("_pipeline_thread")
+        _alive = _t_nav.is_alive() if _t_nav else False
+        if _alive:
+            # Pipeline ยังรันอยู่จริง → กลับไปหน้า running
+            if st.button("📺 ดูงานที่กำลังทำ", use_container_width=True, type="primary"):
+                st.session_state.page = "running"
+                st.rerun()
+        elif st.session_state.get("running") and st.session_state.get("page") != "done":
+            # Thread จบแล้วแต่ user ยังไม่เห็นผล (อยู่หน้าอื่นตอน pipeline จบ)
+            if st.button("✅ ดูผลที่เสร็จแล้ว", use_container_width=True, type="primary"):
+                st.session_state.running = False
+                st.session_state.page = "done"
+                st.rerun()
     
     st.markdown("---")
     st.markdown("**📜 ประวัติ**")
@@ -998,37 +1020,75 @@ with st.sidebar:
             preview = s["task_preview"] or "(ไม่มีโจทย์)"
             status_emoji = "✅" if s["status"] == "completed" else ("⏳" if s["status"] == "running" else "⚠️")
 
-            col_open, col_del = st.columns([5, 1])
+            # Fix Bug 11: detect actually-alive sessions (status=running + thread alive)
+            # ถ้า running แค่ใน meta แต่ thread ตายแล้ว (เช่นใน prior crash) → ปุ่มลบได้
+            _is_current = (
+                st.session_state.get("current_session_path") == s["path"]
+            )
+            _thread = st.session_state.get("_pipeline_thread")
+            _thread_alive = _thread.is_alive() if _thread else False
+            _session_alive = (s["status"] == "running" and _is_current and _thread_alive)
+
+            col_open, col_action = st.columns([5, 1])
             with col_open:
                 if st.button(
                     f"{status_emoji} {preview[:40]}...",
                     key=f"hist_{s['name']}",
                     use_container_width=True,
-                    help=f"{s['name']} • {s['phases_completed']} phases"
+                    help=f"{s['name']} • {s['phases_completed']} phases • status={s['status']}"
                 ):
                     data = load_session(s["path"])
                     st.session_state.current_session_path = s["path"]
                     st.session_state.current_outputs = data["outputs"]
-                    st.session_state.page = "done"
+                    # Fix Bug 3c: ถ้า session ยัง running → ไป page_running แทน page_done
+                    st.session_state.page = "running" if s["status"] == "running" else "done"
                     st.session_state.selected_agent = None
+                    st.session_state.pop("_agent_picked_manually", None)  # reset auto-select
                     st.rerun()
-            with col_del:
-                # ลบทันที — กดทีเดียวจบ
-                if st.button("🗑", key=f"del_{s['name']}", use_container_width=True, help="ลบ session นี้"):
-                    delete_session(s["path"])
-                    if st.session_state.current_session_path == s["path"]:
-                        st.session_state.current_session_path = None
-                        st.session_state.page = "home"
-                    st.rerun()
+            with col_action:
+                # Fix Bug 11: 🛑 Stop button สำหรับ running (กัน user ลบ session ที่ thread ยังรันอยู่ →
+                # orphan thread กิน quota + write ลงโฟลเดอร์ที่ถูกลบ)
+                if _session_alive:
+                    if st.button(
+                        "🛑", key=f"stop_{s['name']}",
+                        use_container_width=True,
+                        help="หยุด pipeline ปลอดภัย (แล้วค่อยลบทีหลัง)"
+                    ):
+                        flag = st.session_state.get("_pipeline_stop_flag")
+                        if isinstance(flag, dict):
+                            flag["stop"] = True
+                        st.toast("⏳ กำลังหยุด pipeline... (อาจรอ phase ปัจจุบันจบก่อน)")
+                        st.rerun()
+                else:
+                    # safe to delete — pipeline ไม่ active
+                    if st.button("🗑", key=f"del_{s['name']}",
+                                 use_container_width=True, help="ลบ session นี้"):
+                        delete_session(s["path"])
+                        if st.session_state.current_session_path == s["path"]:
+                            st.session_state.current_session_path = None
+                            st.session_state.page = "home"
+                        st.rerun()
 
         if len(sessions) >= 2:
             with st.expander("🗑 ลบทั้งหมด"):
                 if st.button("⚠️ ยืนยันลบทุก session", use_container_width=True):
+                    # Fix Bug 11: ข้าม session ที่ thread ยังรันอยู่ (กันลบขณะ pipeline เขียนไฟล์)
+                    _cur = st.session_state.get("current_session_path")
+                    _t = st.session_state.get("_pipeline_thread")
+                    _t_alive = _t.is_alive() if _t else False
+                    skipped = 0
                     for s in sessions:
+                        if s["status"] == "running" and s["path"] == _cur and _t_alive:
+                            skipped += 1
+                            continue
                         delete_session(s["path"])
-                    st.session_state.current_session_path = None
-                    st.session_state.page = "home"
-                    st.success("ลบเรียบร้อย")
+                    if skipped == 0 or st.session_state.current_session_path is None:
+                        st.session_state.current_session_path = None
+                        st.session_state.page = "home"
+                    if skipped > 0:
+                        st.warning(f"ข้าม {skipped} session ที่กำลังรัน — กด 🛑 ก่อนถ้าต้องการลบ")
+                    else:
+                        st.success("ลบเรียบร้อย")
                     time.sleep(0.5)
                     st.rerun()
     
@@ -1163,9 +1223,14 @@ def page_settings():
     
     col1, col2, col3 = st.columns([3, 1, 1])
     with col1:
+        # default order: 3.1-flash-lite-preview (recommend) → Pro ท้าย
         available = st.session_state.available_models or [
-            "gemini-3.1-pro-preview", "gemini-3.1-flash-lite",
-            "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite",
+            "gemini-3.1-flash-lite-preview",
+            "gemini-3.1-flash-lite",
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-3.1-pro-preview",
+            "gemini-2.5-pro",
         ]
         if st.session_state.model not in available:
             available = [st.session_state.model] + available
@@ -1219,7 +1284,8 @@ def page_settings():
                             st.error(f"❌ ทดสอบไม่ผ่าน: {msg[:200]}")
 
     st.markdown(
-        '<small style="color:#6B7280">💡 <b>Pro</b> = ฉลาดสุด • <b>Flash</b> = เร็ว ราคาถูก ฟรี tier โควต้าเยอะ</small>',
+        '<small style="color:#6B7280">💡 <b>Pro</b> = ฉลาดสุด • <b>Flash</b> = เร็ว ฟรี tier โควต้าเยอะ • '
+        '⭐ <b>gemini-3.1-flash-lite-preview</b> = recommend default (output 65K, RPD 500)</small>',
         unsafe_allow_html=True
     )
 
@@ -1231,17 +1297,18 @@ def page_settings():
 
         | Model | RPM (ครั้ง/นาที) | TPM (token/นาที) | RPD (ครั้ง/วัน) | เหมาะกับ |
         |---|---|---|---|---|
-        | gemini-3.1-pro-preview | ~5 | ~250K | ~25 | ⚠️ น้อยมาก — เทสไม่กี่ครั้ง |
+        | ⭐ **gemini-3.1-flash-lite-preview** | **15** | **250K** | **500** | **แนะนำ default — output 65K** |
+        | gemini-3.1-pro-preview | ~5 | ~250K | ~25 | ⚠️ preview, น้อยมาก |
         | gemini-2.5-pro | 5 | 250K | 100 | งานคุณภาพสูง 1-2 รอบ |
-        | gemini-2.5-flash | 10 | 250K | 250 | ⭐ งานทั่วไป (แนะนำ) |
+        | gemini-2.5-flash | 10 | 250K | 250 | งานทั่วไป |
         | gemini-2.5-flash-lite | 15 | 250K | 1,000 | งานเยอะๆ ทดลอง |
-        | gemini-2.0-flash | 15 | 1M | 200 | งาน token เยอะ |
+        | gemini-2.0-flash | 15 | 1M | 200 | งาน input token เยอะ |
         | gemini-2.0-flash-lite | 30 | 1M | 200 | งานเร็วๆ |
 
         **คำแนะนำเลือก model:**
-        - 🎯 **โจทย์ใหม่ทดสอบเล่นๆ** → `gemini-2.5-flash-lite` (1,000 ครั้ง/วัน — รันได้ ~90 sessions)
-        - 🏆 **อยากได้คุณภาพสูง** → `gemini-2.5-pro` (แต่จะรันได้แค่ ~9 sessions/วัน — pipeline 11 phases)
-        - ⚡ **งานเล็กๆ เร็วๆ** → `gemini-2.5-flash` (250 ครั้ง/วัน)
+        - ⭐ **Default** → `gemini-3.1-flash-lite-preview` (RPD 500, output 65K — Quick mode รันได้ ~45 sessions/วัน)
+        - 🏆 **คุณภาพสูง** → `gemini-2.5-pro` (แต่ RPD 100 → Quick ~9 sessions/วัน)
+        - 🧪 **ทดลองเยอะ** → `gemini-2.5-flash-lite` (RPD 1,000)
 
         **ลิมิตจริงเช็คได้ที่นี่** (login Google → เห็น limit + ใช้ไปเท่าไหร่):
         """)
@@ -1274,12 +1341,14 @@ def page_settings():
     st.markdown("---")
     st.session_state.delay = st.slider(
         "⏱ พักระหว่างน้องๆ ทำงาน (วินาที)",
-        min_value=1, max_value=120,
-        value=st.session_state.delay,
-        help="แต่ละ phase ของ AI จะเว้นเวลากันกี่วินาที — "
-             "น้อย = ทำงานเร็วแต่เสี่ยงเจอ Google บอก 'ช้าๆ หน่อย!' (rate limit) | "
-             "มาก = ปลอดภัย ไม่โดนกัน (แนะนำ 60 วินาทีสำหรับ free tier)"
+        min_value=30, max_value=180,
+        value=max(30, st.session_state.delay),  # bump min if legacy state < 30
+        help="แต่ละ phase ของ AI จะเว้นเวลากันกี่วินาที — combined TPM=250K/min "
+             "(input+output รวม). ⭐ Recommend 45s (1.33 req/min ≈ 83% TPM safe). "
+             "⚠️ < 30s = TPM hit เสี่ยงมาก. + Pipeline มี auto-TPM-throttle เป็น safety net"
     )
+    if st.session_state.delay < 45:
+        st.caption("⚠️ Delay < 45s อาจชน TPM (250K/min) — TPM watcher จะ throttle เพิ่มอัตโนมัติถ้าใกล้ ceiling")
 
     st.session_state.judge_threshold = st.slider(
         "⚖️ คะแนนผ่านขั้นต่ำของน้องผู้ตรวจ (/100)",
@@ -1299,6 +1368,53 @@ def page_settings():
              "ถึงจะยอมแพ้และส่งโค้ดเวอร์ชั่นล่าสุดออกมา "
              "(แนะนำ 5 รอบ — มากเกินอาจเปลือง quota)"
     )
+
+    # Selective Context indicator (Nick's directive 2026-05-15)
+    st.success(
+        "✅ **Selective Context: ON** — แต่ละ agent ได้รับ original task + outputs ที่ระบุใน "
+        "`CONTEXT_MAP` (agents.py). Judge/Summarizer ได้ ALL outputs. ทุก phase เห็น original task "
+        "เป็น ground truth.",
+        icon="🧠",
+    )
+    st.caption(
+        "Length requirement: ทุก agent output ≥ 15K chars (target 30-50K). "
+        "DB Admin (no-DB case): ≥ 5K chars. ใช้ token budget เต็มที่ — output 65K + input 1M available."
+    )
+
+    # ─── 4. RESET / CLEAR ───────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown('<div class="happy-h2">🔄 รีเซ็ตเซสชัน</div>', unsafe_allow_html=True)
+    st.caption("ล้างข้อมูลใน session memory ของแอป — ไม่กระทบ auth.json บน disk "
+               "(ใช้ตอน UI ติด state แปลกๆ หรืออยากเริ่มใหม่ลื่นๆ)")
+
+    col_clear, col_logout = st.columns(2)
+    with col_clear:
+        if st.button("🧹 Clear Session State",
+                     use_container_width=True,
+                     help="ล้าง st.session_state ทั้งหมด — API key ใน disk ยังอยู่ auto-login ได้"):
+            # เก็บค่าที่ต้องไม่หาย: page (ให้อยู่ Settings เดิม), api_key (auto-reload)
+            _kept = {
+                "page": "settings",
+                "api_key": st.session_state.get("api_key", ""),
+            }
+            st.session_state.clear()
+            for k, v in _kept.items():
+                st.session_state[k] = v
+            st.success("✅ ล้าง session state แล้ว — refresh หรือทำต่อได้เลย")
+            time.sleep(0.5)
+            st.rerun()
+
+    with col_logout:
+        if st.button("🚪 Logout (ลบ key จาก disk)",
+                     use_container_width=True,
+                     help="ลบ API key จาก ~/.happy/auth.json — ต้อง paste key ใหม่ครั้งหน้า"):
+            clear_api_key()
+            st.session_state.clear()
+            st.session_state.page = "settings"
+            st.success("✅ Logout เรียบร้อย — paste API key ใหม่ที่ด้านบน")
+            time.sleep(0.5)
+            st.rerun()
+
 
 def smart_render(text: str):
     """Render agent output — text เป็น markdown, code block render เองด้วย Pygments
@@ -1433,6 +1549,7 @@ def page_home():
             st.session_state.current_status = {p["id"]: "pending" for p in phases_for_mode}
             st.session_state.current_judge_rounds = []
             st.session_state.selected_agent = None
+            st.session_state.pop("_agent_picked_manually", None)  # reset auto-select for new run
             st.session_state.running = True
             st.session_state.should_stop = False
             st.session_state.started_at = time.time()
@@ -1478,24 +1595,100 @@ def render_agent_pills(status_dict, selected, judge_rounds, mode="quick"):
         )
     return "\n".join(html_parts)
 
+
+def render_agent_button_list(status_dict, judge_rounds, mode, outputs):
+    """UX Redesign: clickable agent list — ชื่อ agent ที่ done คลิกได้เพื่อดู output
+    แทน pills HTML + selectbox dropdown แบบเดิม. กดที่ชื่อ → set selected_agent ทันที.
+
+    - agent ที่ done + มี output ใน outputs → st.button (กดได้)
+    - agent ที่ pending/running/error → HTML pill (ดูสถานะอย่างเดียว)
+    """
+    phases = get_phases_for_mode(mode)
+    selected = st.session_state.get("selected_agent")
+
+    for phase in phases:
+        pid = phase["id"]
+        status = status_dict.get(pid, "pending")
+        emoji = phase["emoji"]
+        name = phase["name"]
+
+        if status == "done":
+            icon = "✅"
+        elif status == "running":
+            icon = "🔄"
+        elif status == "error":
+            icon = "❌"
+        else:
+            icon = "⏸"
+
+        extra = ""
+        if pid == "judge" and judge_rounds:
+            last = judge_rounds[-1]
+            extra = f" ({last[1]} {last[2]}/100)"
+
+        if pid in outputs:
+            marker = "▶ " if selected == pid else ""
+            label = f"{marker}{icon} {emoji} {name}{extra}"
+            if st.button(label, key=f"agent_btn_{pid}", use_container_width=True):
+                st.session_state.selected_agent = pid
+                st.session_state._agent_picked_manually = True
+        else:
+            # ยังไม่มี output → render เป็น pill HTML (อ่านสถานะอย่างเดียว)
+            cls = status if status in ("running", "error") else "pending"
+            extra_html = ""
+            if pid == "judge" and judge_rounds:
+                last = judge_rounds[-1]
+                extra_html = f" <small>({last[1]} {last[2]}/100)</small>"
+            st.markdown(
+                f'<div class="agent-pill {cls}">{icon} {emoji} <b>{name}</b>{extra_html}</div>',
+                unsafe_allow_html=True
+            )
+
+    # Debugger revisions (extra keys ใน outputs ที่ไม่อยู่ใน PHASES)
+    for k in sorted(outputs.keys()):
+        if k.startswith("debugger_revision"):
+            marker = "▶ " if selected == k else ""
+            label = f"{marker}🔄 {k}"
+            if st.button(label, key=f"agent_btn_{k}", use_container_width=True):
+                st.session_state.selected_agent = k
+                st.session_state._agent_picked_manually = True
+
+
+def auto_select_latest_done(status_dict, mode, outputs):
+    """ถ้า user ยังไม่ได้เลือก agent เอง → auto-select agent ล่าสุดที่ done
+    เพื่อให้ output panel แสดงความคืบหน้าล่าสุดอัตโนมัติ"""
+    if st.session_state.get("_agent_picked_manually"):
+        return
+    sel = st.session_state.get("selected_agent")
+    if sel and sel in outputs:
+        # update เป็น latest done ถ้ามีตัวใหม่กว่า
+        pass
+    phases = get_phases_for_mode(mode)
+    done_pids = [p["id"] for p in phases if status_dict.get(p["id"]) == "done" and p["id"] in outputs]
+    if done_pids:
+        st.session_state.selected_agent = done_pids[-1]
+
+
 def run_pipeline_in_thread(task: str, session_path: Path, settings: dict,
-                          status_queue, model: str, client):
-    """รัน pipeline ใน thread แยก — ส่ง update ผ่าน queue"""
+                          status_queue, model: str, client, stop_flag: dict):
+    """รัน pipeline ใน thread แยก — ส่ง update ผ่าน queue.
+    Fix Bug 11: รับ stop_flag (mutable dict) — main thread set stop_flag['stop']=True
+    เพื่อขอให้หยุด → runner._check_stop() เจอ → run() return → thread update meta+queue"""
     def on_start(phase_id, name, idx):
         status_queue.put(("start", phase_id, name, idx))
-    
+
     def on_complete(phase_id, name, idx, output):
         status_queue.put(("complete", phase_id, name, idx, output))
-    
+
     def on_error(phase_id, name, err):
         status_queue.put(("error", phase_id, name, err))
-    
+
     def on_judge(round_num, decision, score):
         status_queue.put(("judge", round_num, decision, score))
-    
+
     # โหลด attachments จาก session ถ้ามี
     attachments = load_attachments_from_session(session_path)
-    
+
     runner = PipelineRunner(
         client=client,
         model=model,
@@ -1508,13 +1701,25 @@ def run_pipeline_in_thread(task: str, session_path: Path, settings: dict,
         on_phase_complete=on_complete,
         on_phase_error=on_error,
         on_judge_round=on_judge,
+        should_stop=lambda: stop_flag.get("stop", False),
     )
-    
+
     try:
         runner.run(task, session_path)
-        status_queue.put(("done",))
+        # Fix Bug 11: distinguish stopped vs completed
+        if stop_flag.get("stop"):
+            try:
+                from pipeline import update_meta
+                update_meta(session_path, status="stopped",
+                            stopped_at=datetime.now().isoformat(),
+                            stopped_by_user=True)
+            except Exception:
+                pass
+            status_queue.put(("stopped",))
+        else:
+            status_queue.put(("done",))
     except Exception as e:
-        # บัก: status ไม่อัปเดตเมื่อ thread ตาย → UI ค้าง running ตลอด
+        # status ไม่อัปเดตเมื่อ thread ตาย → UI ค้าง running ตลอด
         try:
             from pipeline import update_meta
             update_meta(session_path, status="failed",
@@ -1555,10 +1760,14 @@ def page_running():
             "max_judge_loops": st.session_state.max_judge_loops,
             "mode": _saved_mode,
         }
+        # Fix Bug 11: shared mutable stop flag — sidebar Stop button mutates this
+        stop_flag = {"stop": False}
+        st.session_state._pipeline_stop_flag = stop_flag
+
         t = threading.Thread(
             target=run_pipeline_in_thread,
             args=(task, session_path, settings, st.session_state._pipeline_queue,
-                  st.session_state.model, st.session_state.client),
+                  st.session_state.model, st.session_state.client, stop_flag),
             daemon=True
         )
         add_script_run_ctx(t)
@@ -1593,6 +1802,14 @@ def page_running():
             # cleanup
             if "_pipeline_queue" in st.session_state:
                 del st.session_state._pipeline_queue
+            st.rerun()
+        elif kind == "stopped":
+            # Fix Bug 11: user pressed stop → go to done page (will show "stopped" status)
+            st.session_state.running = False
+            st.session_state.page = "done"
+            if "_pipeline_queue" in st.session_state:
+                del st.session_state._pipeline_queue
+            st.toast("🛑 หยุด pipeline แล้ว — ดู output ที่ทำได้บางส่วน")
             st.rerun()
         elif kind == "fatal":
             _, err = msg
@@ -1636,39 +1853,31 @@ def page_running():
     # Two columns: agents + output
     col_l, col_r = st.columns([1, 2])
     
+    # ดึง mode จาก session meta (ใช้ทั้ง col_l และ col_r)
+    from pipeline import load_session
+    try:
+        _data = load_session(st.session_state.current_session_path)
+        _mode = _data["meta"].get("mode", "quick")
+    except Exception:
+        _mode = "quick"
+
+    # UX Redesign: auto-select agent ล่าสุดที่ done (ถ้า user ยังไม่ได้เลือกเอง)
+    auto_select_latest_done(
+        st.session_state.current_status,
+        _mode,
+        st.session_state.current_outputs,
+    )
+
     with col_l:
-        st.markdown("### 📋 ทีมงาน")
-        # ดึง mode จาก session meta
-        from pipeline import load_session
-        try:
-            _data = load_session(st.session_state.current_session_path)
-            _mode = _data["meta"].get("mode", "quick")
-        except Exception:
-            _mode = "quick"
-        st.markdown(
-            render_agent_pills(
-                st.session_state.current_status,
-                st.session_state.selected_agent,
-                st.session_state.current_judge_rounds,
-                mode=_mode,
-            ),
-            unsafe_allow_html=True
+        st.markdown("### 📋 ทีมงาน (คลิกชื่อเพื่อดู output)")
+        # UX Redesign: clickable agent list แทน pills HTML + selectbox dropdown
+        # → กดที่ชื่อ agent ที่ done = ดู output ทันที (1 click)
+        render_agent_button_list(
+            st.session_state.current_status,
+            st.session_state.current_judge_rounds,
+            _mode,
+            st.session_state.current_outputs,
         )
-        
-        st.markdown("")
-        # dropdown to view output — ใช้ phases ตาม mode (รวม kickoff ของ thorough ด้วย)
-        done_agents = [
-            p for p in all_phases
-            if st.session_state.current_status.get(p["id"]) == "done"
-        ]
-        if done_agents:
-            choice = st.selectbox(
-                "ดู output ของ:",
-                options=[p["id"] for p in done_agents],
-                format_func=lambda pid: next((f"{p['emoji']} {p['name']}" for p in all_phases if p["id"] == pid), pid),
-                key="running_agent_select",
-            )
-            st.session_state.selected_agent = choice
 
     with col_r:
         sel = st.session_state.selected_agent
@@ -1676,11 +1885,13 @@ def page_running():
             phase = next((p for p in all_phases if p["id"] == sel), None)
             if phase:
                 st.markdown(f"### {phase['emoji']} {phase['name']}")
+            else:
+                st.markdown(f"### 🔄 {sel}")
             output = st.session_state.current_outputs[sel]
             smart_render(output)
         else:
             st.markdown("### 📺 รอ output...")
-            st.info("รอ agent ตัวแรกทำเสร็จก่อน แล้วเลือกดูได้ที่ฝั่งซ้าย")
+            st.info("รอ agent ตัวแรกทำเสร็จก่อน — เสร็จเมื่อไหร่ output จะแสดงที่นี่อัตโนมัติ")
     
     # poll for pipeline updates - only if there's still work to do
     pipeline_alive = (
@@ -1713,18 +1924,63 @@ def page_done():
             return
     
     task = (session_path / "00_task.txt").read_text(encoding="utf-8") if (session_path / "00_task.txt").exists() else ""
-    
+
+    # Fix Bug 3: เช็ค session status จาก _meta.json — ถ้ายังไม่ done อย่าเปิดให้ download/build
+    try:
+        _meta_done = json.loads((session_path / "_meta.json").read_text(encoding="utf-8"))
+        _session_status = _meta_done.get("status", "unknown")
+    except Exception:
+        _session_status = "unknown"
+    _is_done = _session_status == "completed"
+
     # Status header
-    st.success("✅ เสร็จเรียบร้อย! น้องทำงานครบทุก phase แล้ว")
+    if _is_done:
+        st.success("✅ เสร็จเรียบร้อย! น้องทำงานครบทุก phase แล้ว")
+    elif _session_status == "running":
+        st.warning("⏳ Pipeline ยังทำงานอยู่ — ดู output ได้แต่ดาวน์โหลด/Build ยังไม่ได้")
+        if st.button("📺 กลับไปดูความคืบหน้า", type="primary"):
+            st.session_state.page = "running"
+            st.rerun()
+    elif _session_status == "stopped":
+        # Fix Bug 11: stopped by user — show partial state + safe to delete now
+        st.warning("🛑 หยุดโดย user — output ที่ทำได้บางส่วน (ดาวน์โหลด/Build disabled)")
+    elif _session_status == "failed":
+        st.error(f"❌ Pipeline ล้มเหลว: {_meta_done.get('last_error', 'unknown error')[:200]}")
+    else:
+        st.info(f"ℹ️ สถานะ session: {_session_status}")
+
+    # Bug 9: show completeness warning if any
+    _completeness_warn = _meta_done.get("completeness_warning")
+    if _completeness_warn:
+        st.warning(f"⚠️ Output อาจไม่ครบ: {_completeness_warn[:200]}")
+
+    # Token stats — แสดงให้ user เห็น peak/avg input + total (helps tune delay / detect TPM hit)
+    _tok = _meta_done.get("token_stats")
+    if _tok:
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("📥 Total Input", f"{_tok.get('total_input_tokens', 0):,}")
+        c2.metric("📤 Total Output", f"{_tok.get('total_output_tokens', 0):,}")
+        c3.metric("🔝 Peak Input", f"{_tok.get('peak_input_tokens', 0):,}")
+        c4.metric("📊 Avg Input", f"{_tok.get('avg_input_tokens', 0):,}")
+        with st.expander("📋 Token per phase"):
+            for c in _tok.get("per_call", []):
+                st.caption(
+                    f"`{c.get('agent', '?')}` — input {c.get('input_tokens', 0):,} • "
+                    f"output {c.get('output_tokens', 0):,}"
+                )
     
     with st.expander("📋 ดูโจทย์เดิม"):
         st.write(task)
     
     # Export buttons
     st.markdown('<div class="happy-h2">📤 ดาวน์โหลดผลงาน</div>', unsafe_allow_html=True)
-    
+
+    # Fix Bug 3: disable ปุ่ม download ถ้า pipeline ยังไม่จบ
+    if not _is_done:
+        st.info("⏳ รอ pipeline เสร็จก่อนดาวน์โหลด — ปุ่มเปิดให้กดเมื่อ status = completed")
+
     col1, col2, col3 = st.columns(3)
-    
+
     with col1:
         try:
             combined_txt = build_combined_txt(session_path)
@@ -1734,10 +1990,11 @@ def page_done():
                 file_name=f"happy_report_{session_path.name}.txt",
                 mime="text/plain",
                 use_container_width=True,
+                disabled=not _is_done,
             )
         except Exception as e:
             st.error(f"สร้าง TXT ไม่ได้: {e}")
-    
+
     with col2:
         try:
             files = extract_from_session(session_path)
@@ -1749,12 +2006,13 @@ def page_done():
                     file_name=f"happy_code_{session_path.name}.zip",
                     mime="application/zip",
                     use_container_width=True,
+                    disabled=not _is_done,
                 )
             else:
                 st.warning("ไม่เจอ code block")
         except Exception as e:
             st.error(f"แยกโค้ดไม่ได้: {e}")
-    
+
     with col3:
         try:
             combined_txt = build_combined_txt(session_path)
@@ -1765,21 +2023,31 @@ def page_done():
                 file_name=f"happy_all_{session_path.name}.zip",
                 mime="application/zip",
                 use_container_width=True,
+                disabled=not _is_done,
             )
         except Exception as e:
             st.error(f"สร้าง zip ไม่ได้: {e}")
 
-    # ─── Build .exe section — ถ้า session มีโค้ด Python ───
+    # ─── Build .exe section — รองรับทั้ง Python และ Web (HTML/JS via pywebview) ───
     try:
         _files = extract_from_session(session_path)
-        _main_py = find_main_python_file(_files) if _files else None
+        from builder import detect_project_type, find_main_html_file
+        _ptype = detect_project_type(_files) if _files else "unknown"
+        _main_py = find_main_python_file(_files) if _ptype == "python" else None
+        _main_html = find_main_html_file(_files) if _ptype == "web" else None
     except Exception:
+        _ptype = "unknown"
         _main_py = None
+        _main_html = None
 
-    if _main_py:
+    _can_build = _ptype in ("python", "web")
+    if _can_build:
         st.markdown("---")
         st.markdown('<div class="happy-h2">🔧 Build เป็น .exe (Windows)</div>', unsafe_allow_html=True)
-        st.caption(f"📄 จะ build จาก: `{_main_py}` — ใช้เวลา ~30-60 วินาที")
+        if _ptype == "python":
+            st.caption(f"📄 Python project — build จาก: `{_main_py}` — ใช้เวลา ~30-60 วินาที")
+        else:
+            st.caption(f"🌐 Web project — wrap `{_main_html}` ด้วย **pywebview** เป็น native window — ~60-90 วินาที")
 
         exe_cache_key = f"_exe_built_{session_path.name}"
         cached = st.session_state.get(exe_cache_key)
@@ -1793,14 +2061,17 @@ def page_done():
                 mime="application/octet-stream",
                 use_container_width=True,
                 type="primary",
+                disabled=not _is_done,
             )
-            if st.button("🔄 Build ใหม่", use_container_width=True):
+            if st.button("🔄 Build ใหม่", use_container_width=True, disabled=not _is_done):
                 del st.session_state[exe_cache_key]
                 st.rerun()
         else:
             if cached and not cached.get("ok"):
                 st.error(f"❌ {cached['message']}")
-            if st.button("🔨 เริ่ม Build .exe", use_container_width=True, type="primary"):
+            # Fix Bug 3: disable Build button ถ้า pipeline ยังไม่จบ
+            if st.button("🔨 เริ่ม Build .exe", use_container_width=True, type="primary",
+                         disabled=not _is_done):
                 with st.spinner("กำลัง build...อย่าปิดหน้านี้"):
                     progress = st.empty()
                     def _cb(msg):
@@ -1814,34 +2085,51 @@ def page_done():
 
     st.markdown("---")
     
-    # View outputs by agent
-    st.markdown('<div class="happy-h2">📺 ดู output แต่ละ agent</div>', unsafe_allow_html=True)
-    
+    # View outputs by agent — UX Redesign: clickable agent list + output panel (2 columns)
+    st.markdown('<div class="happy-h2">📺 ดู output แต่ละ agent (คลิกชื่อด้านซ้าย)</div>', unsafe_allow_html=True)
+
     outputs = st.session_state.current_outputs
-    agent_options = [p for p in PHASES if p["id"] in outputs]
-    
-    # also include any debugger_revision_N keys
+    # Fix Bug 1: ใช้ phases ตาม mode ของ session — ไม่งั้น kickoff phases (7 ตัวแรกของ thorough)
+    # หายจาก list เพราะ PHASES = impl-only 11 ตัว → user คิดว่า kickoff ถูก skip
+    try:
+        _done_mode = load_session(session_path)["meta"].get("mode", "quick")
+    except Exception:
+        _done_mode = "quick"
+    _all_phases_done = get_phases_for_mode(_done_mode)
+    agent_options = [p for p in _all_phases_done if p["id"] in outputs]
     extra_keys = [k for k in outputs if k.startswith("debugger_revision")]
-    
+
     if not agent_options and not extra_keys:
         st.warning("ไม่มี output")
     else:
-        all_options = [(p["id"], f"{p['emoji']} {p['name']}") for p in agent_options]
-        all_options += [(k, f"🔄 {k}") for k in extra_keys]
-        
-        # ─── FRAGMENT: agent output viewer ───
-        # rerun เฉพาะส่วนนี้เมื่อเปลี่ยน dropdown — ไม่ rerun ทั้ง app
-        @st.fragment
-        def _agent_viewer():
-            choice = st.selectbox(
-                "เลือก:",
-                options=[opt[0] for opt in all_options],
-                format_func=lambda x: next((opt[1] for opt in all_options if opt[0] == x), x),
-                key="agent_viewer_select",
+        # Synthesize status_dict — page_done ทุก agent ที่อยู่ใน outputs ถือว่า done
+        _status_done = {pid: "done" for pid in outputs}
+
+        # UX Redesign: auto-select agent ล่าสุดถ้า user ยังไม่ได้เลือก
+        auto_select_latest_done(_status_done, _done_mode, outputs)
+
+        col_left, col_right = st.columns([1, 2])
+        with col_left:
+            # UX Redesign: clickable agent list แทน selectbox dropdown
+            # → กดที่ชื่อ agent = ดู output ทันที (1 click ที่เห็นใน UI)
+            render_agent_button_list(
+                _status_done,
+                st.session_state.current_judge_rounds,
+                _done_mode,
+                outputs,
             )
-            if choice and choice in outputs:
-                smart_render(outputs[choice])
-        _agent_viewer()
+
+        with col_right:
+            sel = st.session_state.get("selected_agent")
+            if sel and sel in outputs:
+                phase = next((p for p in _all_phases_done if p["id"] == sel), None)
+                if phase:
+                    st.markdown(f"### {phase['emoji']} {phase['name']}")
+                else:
+                    st.markdown(f"### 🔄 {sel}")
+                smart_render(outputs[sel])
+            else:
+                st.info("👈 คลิกชื่อ agent ทางซ้ายเพื่อดู output")
     
     st.markdown("---")
     
@@ -1853,6 +2141,8 @@ def page_done():
             st.session_state.current_outputs = {}
             st.session_state.current_status = {}
             st.session_state.current_judge_rounds = []
+            st.session_state.selected_agent = None
+            st.session_state.pop("_agent_picked_manually", None)
             st.session_state.page = "home"
             st.rerun()
     with col_b:

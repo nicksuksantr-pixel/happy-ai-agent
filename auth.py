@@ -116,26 +116,32 @@ def list_available_models(client) -> list:
             names.append(name)
 
         def sort_key(n):
+            # Recommended order: Flash variants ก่อน (quota สูง) → Pro ท้าย (quota ต่ำ)
+            # 3.1-flash-lite-preview = preferred default
             nl = n.lower()
-            if "3.1-pro" in nl: return (0, n)
+            if "3.1-flash-lite" in nl: return (0, n)
             if "3.1-flash" in nl: return (1, n)
-            if "3.1" in nl: return (2, n)
-            if "3-pro" in nl: return (3, n)
-            if "3-flash" in nl: return (4, n)
-            if "2.5-pro" in nl: return (5, n)
-            if "2.5-flash" in nl: return (6, n)
-            if "2.0" in nl: return (7, n)
+            if "3-flash" in nl: return (2, n)
+            if "2.5-flash" in nl: return (3, n)
+            if "2.0-flash" in nl: return (4, n)
+            if "3.1-pro" in nl: return (5, n)
+            if "3-pro" in nl: return (6, n)
+            if "2.5-pro" in nl: return (7, n)
             if "1.5" in nl: return (8, n)
             return (9, n)
 
         return sorted(set(names), key=sort_key)
     except Exception:
-        # fallback list ถ้า list_models fail
+        # fallback list ถ้า list_models fail — เรียงตาม recommend
+        # 3.1-flash-lite-preview = default (verified accessible, output 65K, free tier RPD=500)
+        # Pro variants ท้ายๆ — quota ต่ำ (50/day free tier)
         return [
-            "gemini-3.1-pro-preview",
+            "gemini-3.1-flash-lite-preview",
             "gemini-3.1-flash-lite",
-            "gemini-2.5-pro",
+            "gemini-3-flash-preview",
             "gemini-2.5-flash",
             "gemini-2.5-flash-lite",
+            "gemini-3.1-pro-preview",
+            "gemini-2.5-pro",
             "gemini-2.0-flash-001",
         ]

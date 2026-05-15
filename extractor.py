@@ -20,7 +20,7 @@ from typing import Optional
 
 CODE_BLOCK_RE = re.compile(r"```(\w*)\n(.*?)\n```", re.DOTALL)
 
-# patterns สำหรับหา filename
+# patterns สำหรับหา filename ในบรรทัดต้นๆ ของ code block
 FILENAME_PATTERNS = [
     # # filename.ext  (Python/shell comment, first line of block)
     re.compile(r"^#\s+([a-zA-Z0-9_./-]+\.\w+)\s*$"),
@@ -32,6 +32,21 @@ FILENAME_PATTERNS = [
     re.compile(r"^/\*\s+([a-zA-Z0-9_./-]+\.\w+)\s+\*/"),
     # # 1. `filename.ext`
     re.compile(r"^#\s*\d+\.\s*`([^`]+\.\w+)`"),
+]
+
+# Fix Bug 12: patterns สำหรับหา filename ใน markdown heading ก่อน code block
+# เช่น "### File: index.html" หรือ "## index.html" หรือ "**index.html**"
+PRECEDING_HEADER_PATTERNS = [
+    # ### File: filename.ext  (preferred — what Coder/Frontend prompts now ask for)
+    re.compile(r"^#{1,6}\s*File\s*:\s*`?([a-zA-Z0-9_./-]+\.\w+)`?\s*$", re.IGNORECASE),
+    # ### `filename.ext`
+    re.compile(r"^#{1,6}\s*`([a-zA-Z0-9_./-]+\.\w+)`\s*$"),
+    # ### filename.ext
+    re.compile(r"^#{1,6}\s+([a-zA-Z0-9_./-]+\.\w+)\s*$"),
+    # **filename.ext** (bold)
+    re.compile(r"^\*\*([a-zA-Z0-9_./-]+\.\w+)\*\*\s*$"),
+    # `filename.ext` (inline code, alone on line)
+    re.compile(r"^`([a-zA-Z0-9_./-]+\.\w+)`\s*$"),
 ]
 
 # language → file extension fallback
@@ -57,12 +72,9 @@ LANG_EXT = {
 
 
 def find_filename_in_block(code: str) -> tuple:
-    """
-    หา filename จากบรรทัดต้นๆ ของ code block
-    Returns: (filename or None, lines_to_skip)
-    """
+    """หา filename จากบรรทัดต้นๆ ของ code block (in-block markers)
+    Returns: (filename or None, lines_to_skip)"""
     lines = code.split("\n")
-    # check first 3 lines
     for idx in range(min(3, len(lines))):
         line = lines[idx].strip()
         if not line:
@@ -74,37 +86,99 @@ def find_filename_in_block(code: str) -> tuple:
     return None, 0
 
 
+def find_filename_in_preceding(text_before: str) -> str | None:
+    """Fix Bug 12: หา filename จาก markdown heading/marker ก่อน code block
+    เช่น '### File: index.html' บรรทัดก่อน ```html ```"""
+    if not text_before:
+        return None
+    # Take last 6 non-empty lines before the block (closest first)
+    lines = [l.strip() for l in text_before.rstrip().split("\n") if l.strip()][-6:]
+    for line in reversed(lines):
+        for pat in PRECEDING_HEADER_PATTERNS:
+            m = pat.match(line)
+            if m:
+                return m.group(1).strip()
+    return None
+
+
+def _smart_default_filename(lang: str, code: str, existing: dict) -> str | None:
+    """Fix Bug 12: เดาชื่อไฟล์จาก lang + content ก่อน fallback เป็น block_NN
+    คืน None ถ้าเดาไม่ออก (เพื่อให้ caller fallback block_NN)"""
+    code_l = code.lower()
+
+    # HTML → index.html ถ้ายังไม่มี (web app entry)
+    if lang in ("html", "htm"):
+        if "index.html" not in existing:
+            return "index.html"
+
+    # JS/TS → game.js ถ้ามี canvas/game keyword, ไม่งั้น app.js
+    if lang in ("javascript", "js", "typescript", "ts"):
+        is_game = ("canvas" in code_l or "requestanimationframe" in code_l
+                   or "gameloop" in code_l or "ctx.fillrect" in code_l)
+        preferred = "game.js" if is_game else "app.js"
+        if preferred not in existing:
+            return preferred
+
+    # CSS → style.css
+    if lang == "css":
+        if "style.css" not in existing:
+            return "style.css"
+
+    # Python → main.py ถ้ามี if __name__, ไม่งั้น app.py
+    if lang in ("python", "py"):
+        if "if __name__" in code or "__main__" in code:
+            if "main.py" not in existing:
+                return "main.py"
+        if "app.py" not in existing:
+            return "app.py"
+
+    return None  # caller จะใช้ block_NN
+
+
 def extract_files_from_text(text: str) -> dict:
-    """
-    หา code block ทั้งหมด → คืน {filename: content}
-    
-    ถ้า block ไหนไม่มี filename → ตั้งชื่อ block_NN.<ext>
-    """
+    """หา code block ทั้งหมด → คืน {filename: content}
+    Priority หา filename:
+      1. heading ก่อน block: '### File: index.html' (Bug 12 fix)
+      2. comment marker บรรทัดแรกใน block: '# foo.py', '// foo.js', '<!-- foo.html -->'
+      3. smart default ตาม lang+content: 'index.html', 'game.js', 'main.py'
+      4. fallback: 'block_NN.<ext>'"""
     files = {}
     unnamed_counter = 1
-    
+    last_end = 0
+
     for match in CODE_BLOCK_RE.finditer(text):
+        text_before = text[last_end:match.start()]
         lang = match.group(1).lower()
         code = match.group(2)
-        
-        filename, skip = find_filename_in_block(code)
+        last_end = match.end()
+
+        # Priority 1: heading ก่อน block
+        filename = find_filename_in_preceding(text_before)
+        skip = 0
+        # Priority 2: marker ใน block
+        if not filename:
+            filename, skip = find_filename_in_block(code)
         actual_code = "\n".join(code.split("\n")[skip:]).strip()
-        
+
         if not actual_code:
             continue
-        
+
+        # Priority 3: smart default
+        if not filename:
+            filename = _smart_default_filename(lang, code, files)
+        # Priority 4: block_NN fallback
         if not filename:
             ext = LANG_EXT.get(lang, "txt")
             filename = f"block_{unnamed_counter:02d}.{ext}"
             unnamed_counter += 1
-        
+
         # ถ้าซ้ำ เอาก้อนใหญ่กว่า (น่าจะเป็น final version)
         if filename in files:
             if len(actual_code) > len(files[filename]):
                 files[filename] = actual_code
         else:
             files[filename] = actual_code
-    
+
     return files
 
 
