@@ -81,6 +81,22 @@ def _find_python_executable() -> Optional[str]:
     return None
 
 
+def _no_python_help_message() -> str:
+    """Python ไม่เจอ → เปิด browser ไป python.org อัตโนมัติ + return user-friendly message.
+    Nick directive (2026-05-16): ให้ user ไปโหลดเอง — แค่เปิดทางให้สะดวก"""
+    try:
+        import webbrowser
+        webbrowser.open("https://www.python.org/downloads/")
+    except Exception:
+        pass
+    return (
+        "ยังไม่เจอ Python ในเครื่อง — เปิดหน้า python.org ให้แล้ว 🌐\n"
+        "1. โหลด Python 3.11+ (~30 MB)\n"
+        "2. ติดตั้ง — ตอนติดตั้งติ๊ก 'Add Python to PATH'\n"
+        "3. กลับมากดปุ่ม Build อีกครั้ง"
+    )
+
+
 def _is_test_file(name: str) -> bool:
     """ไฟล์ test (test_*.py / *_test.py / tests.py / conftest.py)
     Fix Bug 6: test files ไม่ควรถูกเลือกเป็น main ของ exe — pytest ใน frozen windowed mode
@@ -160,7 +176,7 @@ def _ensure_pkg_installed(pkg_import_name: str, pip_name: Optional[str] = None) 
     pip_name = pip_name or pkg_import_name
     py = _find_python_executable()
     if not py:
-        return False, "ไม่เจอ Python interpreter บนเครื่อง — ต้องลง Python 3.11+ ก่อน"
+        return False, _no_python_help_message()
     try:
         subprocess.run(
             [py, "-c", f"import {pkg_import_name}"],
@@ -218,7 +234,7 @@ def build_exe_from_session(session_path: Path, progress_cb=None) -> Tuple[bool, 
     _progress(f"📦 เตรียม PyInstaller...")
     py = _find_python_executable()
     if not py:
-        return False, "ไม่เจอ Python interpreter — ต้องลง Python 3.11+ ที่ python.org ก่อน Build .exe", None, None
+        return False, _no_python_help_message(), None, None
     ok, msg = ensure_pyinstaller_installed()
     if not ok:
         return False, f"PyInstaller ลงไม่ได้: {msg}", None, None
@@ -352,7 +368,7 @@ def _build_web_exe(files: dict, progress_cb) -> Tuple[bool, str, Optional[bytes]
     progress_cb(f"📦 เตรียม PyInstaller + pywebview...")
     py = _find_python_executable()
     if not py:
-        return False, "ไม่เจอ Python interpreter — ต้องลง Python 3.11+ ที่ python.org ก่อน Build .exe", None, None
+        return False, _no_python_help_message(), None, None
     ok, msg = ensure_pyinstaller_installed()
     if not ok:
         return False, f"PyInstaller ลงไม่ได้: {msg}", None, None
