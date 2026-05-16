@@ -628,9 +628,9 @@ class PipelineRunner:
             self.outputs[pid] = f"[ERROR] {err}"
             self.on_phase_error(pid, name, err)
             try:
-                (session_path / "errors.log").open("a", encoding="utf-8").write(
-                    f"[{datetime.now().isoformat()}] {pid}: {err}\n"
-                )
+                # Fix P2.9 (Coddy #5 2026-05-16): ใช้ with block — กัน file handle leak บน Windows
+                with (session_path / "errors.log").open("a", encoding="utf-8") as _ef:
+                    _ef.write(f"[{datetime.now().isoformat()}] {pid}: {err}\n")
             except Exception:
                 pass
             raise
@@ -718,7 +718,11 @@ class PipelineRunner:
                 return current_code
 
             # revise — score < threshold → ส่งกลับให้ Coder/Debugger แก้
-            self.on_phase_start("coder", f"Coder (revision {round_num})", self.phase_index)
+            # Fix P2.7 (Coddy #5 2026-05-16): track _last_phase เพื่อให้ on_phase_error ระบุ phase ถูกต้อง
+            # Regression of Bug 14 — Debugger call (line ~743) ก็ throw ได้ แต่ except เดิมส่ง "coder" เสมอ
+            _last_phase = "coder"
+            _last_phase_label = f"Coder (revision {round_num})"
+            self.on_phase_start("coder", _last_phase_label, self.phase_index)
             try:
                 revised = call_agent_text_with_min_length(
                     self.client, self.model, CODER_INSTRUCTION,
@@ -739,7 +743,9 @@ class PipelineRunner:
                     "coder", f"Coder (rev {round_num} done)", self.phase_index, revised,
                 )
                 self._delay()
-                self.on_phase_start("debugger", f"Debugger (re-check {round_num})", self.phase_index)
+                _last_phase = "debugger"
+                _last_phase_label = f"Debugger (re-check {round_num})"
+                self.on_phase_start("debugger", _last_phase_label, self.phase_index)
                 current_code = call_agent_text_with_min_length(
                     self.client, self.model, DEBUGGER_INSTRUCTION,
                     self.build_context("debugger", task, extras={
@@ -760,7 +766,8 @@ class PipelineRunner:
                 (session_path / rev_filename).write_text(current_code, encoding="utf-8")
                 self._delay()
             except Exception as e:
-                self.on_phase_error("coder", "Coder (revision)", str(e)[:200])
+                # Fix P2.7: ใช้ _last_phase/_last_phase_label ที่ track ไว้ — ไม่ใช่ hardcode "coder"
+                self.on_phase_error(_last_phase, _last_phase_label, str(e)[:200])
                 return current_code
         
         return current_code

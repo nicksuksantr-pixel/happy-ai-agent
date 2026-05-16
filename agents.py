@@ -249,6 +249,14 @@ if __name__ == "__main__":
 CRITICAL: every `<script src="X.js">` MUST match a `### File: X.js` block you actually wrote.
 The extractor uses these headers as the filename. Without a header, files get auto-named
 `block_NN.py` → downstream tools fail (broken script-src references, broken .exe builds).
+
+GUI / .EXE BUILD RULE (P2.8 — Coddy #5 2026-05-16):
+- If the project will be compiled as a windowed .exe (PyInstaller --windowed / no console),
+  NEVER use debug `print()` statements. The console is hidden — print() output goes nowhere
+  and accumulates silently (or raises on frozen stdout=None).
+- Instead: update GUI labels/widgets, write to a log file, or use the logging module.
+- Signs the target is .exe / GUI: task mentions "desktop app", "GUI", "tkinter", "pywebview",
+  "pygame", "kivy", or the Frontend agent wrote a .py UI file. When in doubt → no debug print().
 """ + COMMON_RULES
 
 
