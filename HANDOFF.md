@@ -1282,3 +1282,85 @@ C:\Users\NickSuksanTr\Desktop\                         ← Desktop (cleaned)
 - archive/ structure created — historical docs preserved
 - Desktop cleaned (~470 MB freed)
 - Nick directive: "เราจบแล้ว" → Phase B closed
+
+---
+
+## 📍 Project Location & Storage Map (2026-05-16 — Coddy #4 Day 2 closing note)
+
+**🔄 Project ย้ายที่อยู่ใหม่!** จาก `Desktop\happy-ai-agent\` → `Documents\Projects\HAPPY\`
+
+### 📂 ที่เก็บ — แผนที่ทั้งหมด (Nick → Coss reference)
+
+#### โปรเจกต์ source code (โรงงานที่ใช้พัฒนา HAPPY)
+```
+📁 C:\Users\NickSuksanTr\Documents\Projects\HAPPY\
+   ├── 🐍 *.py                      ← Python source (app/pipeline/agents/...)
+   ├── 📋 HAPPY.spec                ← PyInstaller spec
+   ├── 📜 HANDOFF.md                ← ไฟล์นี้ — team coordination
+   ├── 🎨 assets/                   ← logo + icon
+   ├── 📦 installer/                ← Inno Setup workspace
+   │   ├── HAPPY.iss                ← installer script
+   │   ├── license-th.txt / license-en.txt
+   │   ├── wizard-image.bmp / wizard-small.bmp / happy.ico
+   │   └── output/                  ← gitignored — compiled .exe
+   ├── 🚀 releases/                 ← finished deliverables
+   │   ├── README.md
+   │   └── v1.032/
+   │       ├── HAPPY-Setup-1.032.exe (101 MB)
+   │       └── release-notes.md
+   ├── 📚 archive/                  ← historical docs
+   ├── 📁 sessions/                 ← OLD dev sessions (orphaned, gitignored)
+   ├── 📁 dist/HAPPY/               ← PyInstaller output (~330 MB, gitignored)
+   ├── 📁 build/                    ← PyInstaller intermediate (gitignored)
+   └── 🗂️ .git/                     ← git history (ไม่ลบ)
+```
+
+#### Active user data (per-user, persist ข้าม install)
+```
+📁 C:\Users\NickSuksanTr\.happy\
+   ├── auth.json                   ← Gemini API key
+   └── sessions/                   ← active sessions (Bug 22 fix moved here)
+```
+
+#### Installed HAPPY (สินค้าสำเร็จรูปที่ใช้รันจริง)
+```
+📁 C:\Users\NickSuksanTr\AppData\Local\Programs\HAPPY\
+   ├── HAPPY.exe                   ← double-click เปิดใช้งาน
+   ├── _internal/                  ← bundled Python + dependencies
+   ├── unins000.exe                ← uninstaller
+   └── unins000.dat
+```
+
+#### User shortcuts (สร้างโดย installer)
+```
+🔗 Desktop\HAPPY.lnk               ← shortcut บน Desktop (option ติ๊ก ON)
+🔗 Start Menu\HAPPY                ← shortcut ใน Start Menu
+```
+
+### 🎯 Storage role summary (สำหรับ Coss + Coddy #5)
+
+| ที่เก็บ | คืออะไร | gitignore? | ลบได้? |
+|---|---|---|---|
+| `Documents\Projects\HAPPY\` | source — โรงงาน | บางส่วน | ❌ ห้ามลบ |
+| `~/.happy/auth.json` | API key | (อยู่นอก project) | ลบได้ → ต้อง paste key ใหม่ |
+| `~/.happy/sessions/` | งาน user | (อยู่นอก project) | ลบได้ → history หาย แต่ไม่กระทบ HAPPY |
+| `Programs\HAPPY\` | installed app | (อยู่นอก project) | ลบผ่าน uninstaller |
+| `releases/v1.032/*.exe` | installer for distribution | gitignored | ลบได้ → ต้อง rebuild ถ้าจะส่งใหม่ |
+| `dist/HAPPY/`, `build/` | PyInstaller artifacts | gitignored | ลบได้ → ต้อง rebuild |
+| `sessions/` (in project) | OLD orphaned (post-Bug 22) | gitignored | ลบได้ — ของเก่าก่อน Bug 22 fix |
+| `Desktop\happy-ai-agent\` | **OLD source location** | — | **🗑️ ลบได้หลัง Claude Code ปิด** |
+
+### 💼 Coss + Coddy #5 onboarding
+
+**ในเซสชั่นถัดไป:**
+1. เปิด Claude Code → cd ไป `C:\Users\NickSuksanTr\Documents\Projects\HAPPY\`
+2. อ่าน HANDOFF.md (ไฟล์นี้ — ที่ location ใหม่)
+3. ใช้ `git log --oneline -10` ดู commits ล่าสุด
+4. ดู `releases/v1.032/release-notes.md` สำหรับ deliverable ล่าสุด
+
+**ตัว installer พร้อมส่งเพื่อน:**
+- ที่อยู่: `C:\Users\NickSuksanTr\Documents\Projects\HAPPY\releases\v1.032\HAPPY-Setup-1.032.exe`
+- ขนาด: 101 MB
+- ใช้งาน: เพื่อน double-click → install wizard เด้ง → ติดตั้ง → ใช้ได้
+
+ฝากนิก → คอส 🤝 — Coddy #4 Day 2 (location move + storage map)
