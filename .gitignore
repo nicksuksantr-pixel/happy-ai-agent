@@ -42,6 +42,13 @@ installer/output/
 releases/*/*.exe
 releases/*/*.zip
 
+# Claude Code worktree — internal use, อย่า commit
+.claude/worktrees/
+
+# Personal files ที่หลุดเข้าโปรเจกต์ — gitignored explicit (ไม่ใช่ HAPPY source)
+Nick_Creative_Portfolio.docx
+ระบบดาวเทียม.html
+
 # Backups
 *.bak
 *.bak[0-9]*
