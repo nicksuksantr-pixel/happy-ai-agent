@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>HAPPY Setup — Mockup Preview</title>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Sarabun', system-ui, sans-serif;
+            background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 30px 20px;
+        }
+
+        /* ── Top bar — controls + screen indicator ── */
+        .top-bar {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            margin-bottom: 20px;
+            background: white;
+            padding: 12px 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .top-bar h1 {
+            font-size: 14px;
+            color: #6b7280;
+            font-weight: 500;
+        }
+        .screen-dots {
+            display: flex;
+            gap: 8px;
+        }
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #d1d5db;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .dot.active {
+            background: linear-gradient(135deg, #FB923C, #EC4899);
+            transform: scale(1.2);
+        }
+        .dot:hover { transform: scale(1.3); }
+
+        /* ── Installer wizard window ── */
+        .installer {
+            width: 720px;
+            height: 540px;
+            background: white;
+            border-radius: 14px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* ── Window chrome — fake titlebar ── */
+        .window-titlebar {
+            background: linear-gradient(135deg, #FB923C 0%, #EC4899 100%);
+            color: white;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+        }
+        .titlebar-icons {
+            display: flex;
+            gap: 8px;
+        }
+        .titlebar-btn {
+            width: 28px;
+            height: 24px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            cursor: pointer;
+            transition: 0.15s;
+        }
+        .titlebar-btn:hover { background: rgba(255,255,255,0.2); }
+        .titlebar-btn.close:hover { background: #EF4444; }
+
+        /* ── Wizard body ── */
+        .wizard-body {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* Left sidebar for welcome/finish (big image) */
+        .wizard-side {
+            width: 200px;
+            background: linear-gradient(180deg, #FFF7ED 0%, #FDF2F8 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 30px 16px;
+            border-right: 1px solid #f3f4f6;
+        }
+        .wizard-side img {
+            width: 100%;
+            max-width: 160px;
+            margin-bottom: 16px;
+        }
+        .wizard-side .side-text {
+            text-align: center;
+            font-size: 11px;
+            color: #9ca3af;
+            line-height: 1.6;
+        }
+
+        /* Top header for middle screens */
+        .wizard-header {
+            background: white;
+            border-bottom: 1px solid #f3f4f6;
+            padding: 16px 30px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .wizard-header img {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+        }
+        .wizard-header h2 {
+            font-size: 16px;
+            font-weight: 700;
+            color: #1f2937;
+        }
+        .wizard-header p {
+            font-size: 12px;
+            color: #6b7280;
+        }
+
+        /* Main content area */
+        .wizard-content {
+            flex: 1;
+            padding: 30px 40px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        .wizard-content h1 {
+            font-size: 22px;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 8px;
+        }
+        .wizard-content .subtitle {
+            font-size: 13px;
+            color: #6b7280;
+            margin-bottom: 24px;
+            line-height: 1.6;
+        }
+
+        /* Form controls */
+        .form-row {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 16px;
+        }
+        .form-row label {
+            font-size: 12px;
+            color: #4b5563;
+            font-weight: 500;
+        }
+        .form-input {
+            display: flex;
+            gap: 8px;
+        }
+        .form-input input {
+            flex: 1;
+            padding: 10px 14px;
+            border: 1.5px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 13px;
+            font-family: inherit;
+            color: #1f2937;
+            background: #fafafa;
+        }
+        .form-input input:focus {
+            border-color: #FB923C;
+            outline: none;
+            background: white;
+        }
+        .browse-btn {
+            padding: 10px 16px;
+            background: #f3f4f6;
+            border: 1.5px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 13px;
+            font-family: inherit;
+            color: #4b5563;
+            cursor: pointer;
+            transition: 0.15s;
+        }
+        .browse-btn:hover { background: #e5e7eb; }
+
+        .checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: 0.15s;
+            margin-bottom: 6px;
+        }
+        .checkbox-row:hover { background: #fff7ed; }
+        .checkbox-row input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: #FB923C;
+            cursor: pointer;
+        }
+        .checkbox-row .check-label {
+            font-size: 13px;
+            color: #1f2937;
+        }
+        .checkbox-row .check-desc {
+            font-size: 11px;
+            color: #9ca3af;
+            margin-top: 2px;
+        }
+
+        .info-box {
+            background: #FFF7ED;
+            border-left: 3px solid #FB923C;
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-top: 16px;
+            font-size: 12px;
+            color: #9a3412;
+            line-height: 1.6;
+        }
+
+        .summary-box {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 18px 22px;
+            margin-bottom: 16px;
+            font-size: 13px;
+            line-height: 1.9;
+            color: #4b5563;
+        }
+        .summary-box .sum-row {
+            display: flex;
+            gap: 10px;
+        }
+        .summary-box .sum-label {
+            min-width: 110px;
+            color: #9ca3af;
+            font-size: 12px;
+        }
+        .summary-box .sum-value {
+            color: #1f2937;
+            font-weight: 500;
+        }
+
+        /* Progress bar — animated */
+        .progress-section {
+            margin-top: 30px;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 12px;
+            background: #f3f4f6;
+            border-radius: 6px;
+            overflow: hidden;
+            position: relative;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(135deg, #FB923C, #EC4899);
+            border-radius: 6px;
+            width: 0%;
+            transition: width 0.4s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .progress-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg,
+                transparent 0%,
+                rgba(255,255,255,0.4) 50%,
+                transparent 100%);
+            animation: shimmer 1.4s linear infinite;
+        }
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        .progress-status {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 12px;
+        }
+        .progress-text {
+            font-size: 13px;
+            color: #4b5563;
+        }
+        .progress-percent {
+            font-size: 14px;
+            color: #FB923C;
+            font-weight: 700;
+        }
+
+        .install-log {
+            background: #1f2937;
+            color: #9ca3af;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            padding: 14px 18px;
+            border-radius: 8px;
+            margin-top: 18px;
+            height: 130px;
+            overflow-y: auto;
+            line-height: 1.7;
+        }
+        .install-log .log-line { display: block; }
+        .install-log .log-success { color: #10b981; }
+
+        /* HAPPY mascot bouncing animation on installing screen */
+        .mini-mascot {
+            position: absolute;
+            top: 80px;
+            right: 40px;
+            font-size: 50px;
+            animation: bounce 2s ease-in-out infinite;
+            opacity: 0.85;
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0) rotate(-5deg); }
+            50% { transform: translateY(-10px) rotate(5deg); }
+        }
+
+        /* Finish screen — confetti effect */
+        .confetti-container {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+            overflow: hidden;
+        }
+        .confetti {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            border-radius: 2px;
+            opacity: 0;
+        }
+        .show-confetti .confetti {
+            animation: fall 2.5s ease-out infinite;
+        }
+        @keyframes fall {
+            0% { opacity: 1; transform: translateY(-20px) rotate(0deg); }
+            100% { opacity: 0; transform: translateY(500px) rotate(720deg); }
+        }
+        .big-checkmark {
+            font-size: 80px;
+            margin-bottom: 20px;
+            animation: pop 0.6s ease-out;
+        }
+        @keyframes pop {
+            0% { transform: scale(0); opacity: 0; }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        /* Footer with buttons */
+        .wizard-footer {
+            background: #f9fafb;
+            border-top: 1px solid #e5e7eb;
+            padding: 14px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .step-indicator {
+            font-size: 11px;
+            color: #9ca3af;
+        }
+        .footer-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        .btn {
+            padding: 9px 22px;
+            font-size: 13px;
+            font-family: inherit;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: 0.2s;
+            border: 1.5px solid transparent;
+        }
+        .btn-secondary {
+            background: white;
+            border-color: #e5e7eb;
+            color: #4b5563;
+        }
+        .btn-secondary:hover {
+            background: #f3f4f6;
+            border-color: #d1d5db;
+        }
+        .btn-secondary:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #FB923C, #EC4899);
+            color: white;
+        }
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(251, 146, 60, 0.4);
+        }
+        .btn-danger {
+            background: white;
+            border-color: #fecaca;
+            color: #ef4444;
+        }
+        .btn-danger:hover {
+            background: #fef2f2;
+        }
+
+        /* Screen transition */
+        .screen { display: none; flex: 1; flex-direction: column; }
+        .screen.active { display: flex; }
+
+        /* ── Language picker modal (shown on load, before wizard) ── */
+        .lang-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(31, 41, 55, 0.6);
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            animation: fadeIn 0.25s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .lang-modal {
+            width: 420px;
+            background: white;
+            border-radius: 14px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+            animation: slideUp 0.3s ease-out;
+        }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .lang-modal-header {
+            background: linear-gradient(135deg, #FB923C, #EC4899);
+            color: white;
+            padding: 16px 20px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .lang-modal-body {
+            padding: 28px 30px;
+        }
+        .lang-modal-body h2 {
+            font-size: 18px;
+            color: #1f2937;
+            margin-bottom: 6px;
+        }
+        .lang-modal-body p {
+            font-size: 13px;
+            color: #6b7280;
+            margin-bottom: 22px;
+        }
+        .lang-options {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .lang-btn {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 14px 18px;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            background: white;
+            cursor: pointer;
+            transition: 0.2s;
+            font-family: inherit;
+            text-align: left;
+        }
+        .lang-btn:hover {
+            border-color: #FB923C;
+            background: #fff7ed;
+            transform: translateX(4px);
+        }
+        .lang-btn.recommended {
+            border-color: #FB923C;
+            background: #fff7ed;
+        }
+        .lang-flag {
+            font-size: 28px;
+        }
+        .lang-info { flex: 1; }
+        .lang-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1f2937;
+        }
+        .lang-native {
+            font-size: 12px;
+            color: #6b7280;
+        }
+        .lang-arrow {
+            color: #9ca3af;
+            font-size: 16px;
+        }
+        .lang-btn:hover .lang-arrow {
+            color: #FB923C;
+            transform: translateX(3px);
+        }
+        .lang-modal-footer {
+            background: #f9fafb;
+            padding: 12px 20px;
+            text-align: center;
+            font-size: 11px;
+            color: #9ca3af;
+        }
+
+        /* Note at bottom */
+        .note {
+            margin-top: 20px;
+            background: white;
+            padding: 14px 20px;
+            border-radius: 10px;
+            font-size: 12px;
+            color: #6b7280;
+            line-height: 1.7;
+            max-width: 720px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        .note strong { color: #FB923C; }
+    </style>
+</head>
+<body>
+
+<!-- Language picker modal — shown on load, just like Inno Setup -->
+<div class="lang-overlay" id="langOverlay">
+    <div class="lang-modal">
+        <div class="lang-modal-header">
+            🌐 Setup Language / เลือกภาษาติดตั้ง
+        </div>
+        <div class="lang-modal-body">
+            <h2>Please select language</h2>
+            <p>กรุณาเลือกภาษาที่ต้องการใช้ระหว่างติดตั้ง — เปลี่ยนได้ภายหลังจากใน HAPPY Settings</p>
+            <div class="lang-options">
+                <button class="lang-btn recommended" onclick="selectLang('th')">
+                    <span class="lang-flag">🇹🇭</span>
+                    <div class="lang-info">
+                        <div class="lang-name">ไทย <span style="color:#FB923C; font-size:11px;">(แนะนำ)</span></div>
+                        <div class="lang-native">ใช้สำหรับเมนูและข้อความใน installer</div>
+                    </div>
+                    <span class="lang-arrow">→</span>
+                </button>
+                <button class="lang-btn" onclick="selectLang('en')">
+                    <span class="lang-flag">🇬🇧</span>
+                    <div class="lang-info">
+                        <div class="lang-name">English</div>
+                        <div class="lang-native">Use English for installer menus and messages</div>
+                    </div>
+                    <span class="lang-arrow">→</span>
+                </button>
+            </div>
+        </div>
+        <div class="lang-modal-footer">
+            HAPPY v1.032 · Setup Wizard
+        </div>
+    </div>
+</div>
+
+<div class="top-bar">
+    <h1>🔍 HAPPY Installer Mockup — Preview</h1>
+    <div class="screen-dots" id="screenDots">
+        <div class="dot active" data-screen="0" title="Welcome"></div>
+        <div class="dot" data-screen="1" title="License"></div>
+        <div class="dot" data-screen="2" title="Destination"></div>
+        <div class="dot" data-screen="3" title="Shortcuts"></div>
+        <div class="dot" data-screen="4" title="Ready"></div>
+        <div class="dot" data-screen="5" title="Installing"></div>
+        <div class="dot" data-screen="6" title="Finished"></div>
+    </div>
+</div>
+
+<div class="installer">
+
+    <!-- Window titlebar -->
+    <div class="window-titlebar">
+        <span>🤖 HAPPY Setup — v1.032</span>
+        <div class="titlebar-icons">
+            <div class="titlebar-btn">_</div>
+            <div class="titlebar-btn">☐</div>
+            <div class="titlebar-btn close">✕</div>
+        </div>
+    </div>
+
+    <!-- Screen 1: Welcome -->
+    <div class="screen active" id="screen-0">
+        <div class="wizard-body">
+            <div class="wizard-side">
+                <img src="assets/happy_logo.png" alt="HAPPY">
+                <div class="side-text">AI Agent<br>ที่ทำให้เขียนโค้ดได้ในคลิกเดียว</div>
+            </div>
+            <div class="wizard-content">
+                <h1>ยินดีต้อนรับสู่ HAPPY Setup 🎉</h1>
+                <div class="subtitle">
+                    ตัวช่วยติดตั้งจะพา HAPPY ลงเครื่องของคุณ<br>
+                    ใช้เวลาประมาณ 30 วินาที — ไม่ต้องมี Python หรือเครื่องมืออื่นๆ ก่อนหน้า
+                </div>
+                <div style="margin-top: 14px; font-size: 13px; color: #4b5563; line-height: 1.9;">
+                    📦 ขนาดติดตั้ง: ~330 MB<br>
+                    🖥️ Windows 10 / 11 (64-bit)<br>
+                    🌐 ต้องการ Internet (Gemini API)<br>
+                    🔐 ไม่ต้องการ Administrator
+                </div>
+                <div class="info-box" style="margin-top: 20px;">
+                    💡 กด <strong>"ถัดไป"</strong> เพื่อเริ่ม. กด <strong>"ยกเลิก"</strong> ออกเมื่อไหร่ก็ได้
+                </div>
+            </div>
+        </div>
+        <div class="wizard-footer">
+            <div class="step-indicator">หน้า 1 จาก 6</div>
+            <div class="footer-buttons">
+                <button class="btn btn-secondary" disabled>← ย้อนกลับ</button>
+                <button class="btn btn-primary" onclick="goTo(2)">ถัดไป →</button>
+                <button class="btn btn-danger">ยกเลิก</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Screen 2: License -->
+    <div class="screen" id="screen-1">
+        <div class="wizard-header">
+            <img src="assets/happy_logo_square.png" alt="HAPPY">
+            <div>
+                <h2>ข้อตกลงการใช้งาน</h2>
+                <p>โปรดอ่านก่อนติดตั้ง</p>
+            </div>
+        </div>
+        <div class="wizard-content">
+            <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px 20px; height: 240px; overflow-y: auto; font-size: 12px; color: #4b5563; line-height: 1.7;">
+<strong>HAPPY — AI Agent (Personal Use License)</strong><br><br>
+ซอฟต์แวร์นี้แจกฟรีสำหรับการใช้งานส่วนตัว<br>
+ไม่อนุญาตให้นำไปขายต่อหรือดัดแปลงเพื่อการค้า โดยไม่ได้รับอนุญาตจากผู้พัฒนา (Nick SuksanTr)<br><br>
+<strong>ความรับผิดชอบของผู้ใช้:</strong><br>
+- ต้องมี Gemini API key ของตัวเอง (ฟรีหรือเสียเงิน)<br>
+- ค่าใช้จ่าย API ผู้ใช้รับผิดชอบเอง<br>
+- HAPPY ไม่เก็บข้อมูล / ไม่ส่งข้อมูลของคุณไปไหน<br><br>
+<strong>การรับประกัน:</strong><br>
+ซอฟต์แวร์นี้แจก "as-is" — ผู้พัฒนาไม่รับผิดชอบความเสียหาย<br>
+จากการใช้งาน. โปรดทดสอบในสภาพแวดล้อมที่ไม่ critical ก่อน
+            </div>
+            <div class="checkbox-row" style="margin-top: 16px;">
+                <input type="checkbox" id="accept-license" checked>
+                <label for="accept-license" class="check-label">ฉันยอมรับข้อตกลงการใช้งาน</label>
+            </div>
+        </div>
+        <div class="wizard-footer">
+            <div class="step-indicator">หน้า 2 จาก 6</div>
+            <div class="footer-buttons">
+                <button class="btn btn-secondary" onclick="goTo(1)">← ย้อนกลับ</button>
+                <button class="btn btn-primary" onclick="goTo(3)">ถัดไป →</button>
+                <button class="btn btn-danger">ยกเลิก</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Screen 3: Destination -->
+    <div class="screen" id="screen-2">
+        <div class="wizard-header">
+            <img src="assets/happy_logo_square.png" alt="HAPPY">
+            <div>
+                <h2>เลือกที่ติดตั้ง</h2>
+                <p>HAPPY จะถูกติดตั้งในโฟลเดอร์ด้านล่าง</p>
+            </div>
+        </div>
+        <div class="wizard-content">
+            <div class="form-row">
+                <label>ตำแหน่งติดตั้ง</label>
+                <div class="form-input">
+                    <input type="text" value="C:\Users\NickSuksanTr\AppData\Local\Programs\HAPPY" readonly>
+                    <button class="browse-btn">📁 เลือก...</button>
+                </div>
+            </div>
+            <div style="background: #f9fafb; border-radius: 8px; padding: 14px 18px; margin-top: 12px; font-size: 12px; color: #4b5563; line-height: 1.9;">
+                <div style="display:flex; justify-content:space-between;">
+                    <span>📦 ขนาดที่ต้องการ:</span>
+                    <strong style="color: #1f2937;">330 MB</strong>
+                </div>
+                <div style="display:flex; justify-content:space-between;">
+                    <span>💾 พื้นที่ว่างในไดรฟ์:</span>
+                    <strong style="color: #10b981;">42.8 GB</strong>
+                </div>
+            </div>
+            <div class="info-box">
+                💡 ที่นี่ติดตั้งโดยไม่ต้องสิทธิ์ Administrator — ลงในโฟลเดอร์ user ของคุณ
+            </div>
+        </div>
+        <div class="wizard-footer">
+            <div class="step-indicator">หน้า 3 จาก 6</div>
+            <div class="footer-buttons">
+                <button class="btn btn-secondary" onclick="goTo(2)">← ย้อนกลับ</button>
+                <button class="btn btn-primary" onclick="goTo(4)">ถัดไป →</button>
+                <button class="btn btn-danger">ยกเลิก</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Screen 4: Shortcuts -->
+    <div class="screen" id="screen-3">
+        <div class="wizard-header">
+            <img src="assets/happy_logo_square.png" alt="HAPPY">
+            <div>
+                <h2>เลือก Shortcut</h2>
+                <p>จะสร้างทางลัดที่ไหนบ้าง</p>
+            </div>
+        </div>
+        <div class="wizard-content">
+            <div class="checkbox-row">
+                <input type="checkbox" id="sc-start" checked disabled>
+                <div>
+                    <div class="check-label">📋 Start Menu</div>
+                    <div class="check-desc">สร้างไอคอนใน Start Menu — แนะนำ (ปิดไม่ได้)</div>
+                </div>
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="sc-desk" checked>
+                <div>
+                    <div class="check-label">🖥️ Desktop</div>
+                    <div class="check-desc">สร้างไอคอนบนหน้า Desktop — สะดวกเปิดเร็ว</div>
+                </div>
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="sc-pin">
+                <div>
+                    <div class="check-label">📌 Taskbar Pin (Windows 11)</div>
+                    <div class="check-desc">ปักไอคอนบน Taskbar (ใช้ได้เฉพาะ Windows 11)</div>
+                </div>
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="sc-autostart">
+                <div>
+                    <div class="check-label">🚀 เริ่มอัตโนมัติเมื่อเปิดเครื่อง</div>
+                    <div class="check-desc">เปิด HAPPY ทุกครั้งที่ Windows boot — ส่วนใหญ่ไม่ต้องการ</div>
+                </div>
+            </div>
+        </div>
+        <div class="wizard-footer">
+            <div class="step-indicator">หน้า 4 จาก 6</div>
+            <div class="footer-buttons">
+                <button class="btn btn-secondary" onclick="goTo(3)">← ย้อนกลับ</button>
+                <button class="btn btn-primary" onclick="goTo(5)">ถัดไป →</button>
+                <button class="btn btn-danger">ยกเลิก</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Screen 5: Ready -->
+    <div class="screen" id="screen-4">
+        <div class="wizard-header">
+            <img src="assets/happy_logo_square.png" alt="HAPPY">
+            <div>
+                <h2>พร้อมติดตั้ง</h2>
+                <p>กรุณาทบทวนก่อนกดติดตั้ง</p>
+            </div>
+        </div>
+        <div class="wizard-content">
+            <div class="summary-box">
+                <div class="sum-row"><span class="sum-label">📦 ติดตั้ง:</span><span class="sum-value">HAPPY v1.032</span></div>
+                <div class="sum-row"><span class="sum-label">📁 ที่อยู่:</span><span class="sum-value">%LocalAppData%\Programs\HAPPY</span></div>
+                <div class="sum-row"><span class="sum-label">📋 Start Menu:</span><span class="sum-value">มี</span></div>
+                <div class="sum-row"><span class="sum-label">🖥️ Desktop:</span><span class="sum-value">มี</span></div>
+                <div class="sum-row"><span class="sum-label">📌 Taskbar:</span><span class="sum-value">ไม่</span></div>
+                <div class="sum-row"><span class="sum-label">🚀 Auto-start:</span><span class="sum-value">ไม่</span></div>
+                <div class="sum-row" style="margin-top:8px; padding-top:8px; border-top:1px dashed #e5e7eb;">
+                    <span class="sum-label">⏱️ เวลา:</span><span class="sum-value">~30 วินาที</span>
+                </div>
+            </div>
+            <div class="info-box">
+                ✨ พร้อมแล้ว! กด <strong>"ติดตั้ง"</strong> เพื่อเริ่ม
+            </div>
+        </div>
+        <div class="wizard-footer">
+            <div class="step-indicator">หน้า 5 จาก 6</div>
+            <div class="footer-buttons">
+                <button class="btn btn-secondary" onclick="goTo(4)">← ย้อนกลับ</button>
+                <button class="btn btn-primary" onclick="startInstall()">⚡ ติดตั้ง</button>
+                <button class="btn btn-danger">ยกเลิก</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Screen 6: Installing -->
+    <div class="screen" id="screen-5">
+        <div class="wizard-header">
+            <img src="assets/happy_logo_square.png" alt="HAPPY">
+            <div>
+                <h2>กำลังติดตั้ง...</h2>
+                <p>HAPPY กำลังเตรียมพร้อมให้คุณ</p>
+            </div>
+        </div>
+        <div class="wizard-content">
+            <div class="mini-mascot">🤖</div>
+            <div class="progress-section">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill" style="width: 0%;"></div>
+                </div>
+                <div class="progress-status">
+                    <span class="progress-text" id="progressText">กำลังเริ่ม...</span>
+                    <span class="progress-percent" id="progressPercent">0%</span>
+                </div>
+            </div>
+            <div class="install-log" id="installLog">
+                <span class="log-line">[install] เริ่มต้นการติดตั้ง HAPPY v1.032...</span>
+            </div>
+        </div>
+        <div class="wizard-footer">
+            <div class="step-indicator">หน้า 6 จาก 6</div>
+            <div class="footer-buttons">
+                <button class="btn btn-secondary" disabled>← ย้อนกลับ</button>
+                <button class="btn btn-primary" disabled>ถัดไป →</button>
+                <button class="btn btn-danger">ยกเลิก</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Screen 7: Finished -->
+    <div class="screen" id="screen-6">
+        <div class="wizard-body">
+            <div class="wizard-side">
+                <img src="assets/happy_logo.png" alt="HAPPY">
+                <div class="side-text">ขอบคุณที่ใช้ HAPPY ❤️</div>
+            </div>
+            <div class="wizard-content" style="align-items: center; justify-content: center; text-align: center; position: relative;">
+                <div class="confetti-container show-confetti">
+                    <div class="confetti" style="left:10%; top:-10px; background:#FB923C; animation-delay:0s;"></div>
+                    <div class="confetti" style="left:30%; top:-10px; background:#EC4899; animation-delay:0.3s;"></div>
+                    <div class="confetti" style="left:50%; top:-10px; background:#FBBF24; animation-delay:0.6s;"></div>
+                    <div class="confetti" style="left:70%; top:-10px; background:#3B82F6; animation-delay:0.9s;"></div>
+                    <div class="confetti" style="left:85%; top:-10px; background:#10B981; animation-delay:1.2s;"></div>
+                    <div class="confetti" style="left:20%; top:-10px; background:#A855F7; animation-delay:1.5s;"></div>
+                </div>
+                <div class="big-checkmark">✅</div>
+                <h1 style="margin-bottom:10px;">ติดตั้งเสร็จแล้ว! 🎉</h1>
+                <div class="subtitle" style="margin-bottom: 24px;">
+                    HAPPY พร้อมใช้งานบนเครื่องของคุณแล้ว<br>
+                    เปิดได้จาก Start Menu หรือ Desktop
+                </div>
+                <div class="checkbox-row" style="background: #FFF7ED; padding: 14px 18px; border-radius: 10px; margin-bottom: 20px;">
+                    <input type="checkbox" id="launch-now" checked>
+                    <label for="launch-now" class="check-label">🚀 เปิด HAPPY ทันที</label>
+                </div>
+            </div>
+        </div>
+        <div class="wizard-footer">
+            <div class="step-indicator">เสร็จสิ้น ✨</div>
+            <div class="footer-buttons">
+                <button class="btn btn-secondary" disabled>← ย้อนกลับ</button>
+                <button class="btn btn-primary" onclick="goTo(1)">🎯 เสร็จสิ้น</button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<div class="note">
+    💡 <strong>นี่คือ mockup</strong> — ผ่าน Inno Setup จริงๆ จะมี Windows native controls. หน้าหลัก (Welcome / Finished) สามารถ custom 100% ตามนี้. หน้ากลาง (License / Destination / Shortcuts / Ready / Installing) ใช้ Windows native widgets — สีและ font ปรับได้ผ่าน Inno Setup theme. <strong>ใช้ HAPPY mascot ได้ทุกหน้า ✅</strong> + animated progress bar built-in. Confetti จะใช้ static image แทน (Inno ไม่รัน CSS).
+</div>
+
+<script>
+    function selectLang(lang) {
+        // ในของจริง Inno Setup จะ apply language ให้ทุกหน้า wizard
+        // mockup นี้ใช้ Thai content เท่านั้น — คลิกอันไหนก็ปิด overlay เข้า wizard
+        document.getElementById('langOverlay').style.display = 'none';
+        window.__lang = lang;  // เก็บไว้ debug
+    }
+
+    function showLangPicker() {
+        document.getElementById('langOverlay').style.display = 'flex';
+    }
+
+    function goTo(n) {
+        const idx = n - 1;
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById('screen-' + idx).classList.add('active');
+        document.querySelectorAll('.dot').forEach(d => d.classList.remove('active'));
+        document.querySelector(`.dot[data-screen="${idx}"]`).classList.add('active');
+    }
+
+    document.querySelectorAll('.dot').forEach(d => {
+        d.addEventListener('click', () => goTo(parseInt(d.dataset.screen) + 1));
+    });
+
+    function startInstall() {
+        goTo(6);
+        const fill = document.getElementById('progressFill');
+        const txt = document.getElementById('progressText');
+        const pct = document.getElementById('progressPercent');
+        const log = document.getElementById('installLog');
+
+        const steps = [
+            { p: 8, text: 'กำลังเตรียมโฟลเดอร์...', log: '[install] mkdir %LocalAppData%\\Programs\\HAPPY' },
+            { p: 22, text: 'กำลัง extract HAPPY.exe...', log: '[install] extract HAPPY.exe (24 MB)' },
+            { p: 45, text: 'กำลัง extract _internal/ (1,200+ files)...', log: '[install] extract _internal/ (306 MB)' },
+            { p: 68, text: 'กำลังลงทะเบียน Uninstaller...', log: '[install] register HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\HAPPY' },
+            { p: 80, text: 'กำลังสร้าง Start Menu shortcut...', log: '[install] mklink Start Menu\\HAPPY.lnk' },
+            { p: 90, text: 'กำลังสร้าง Desktop shortcut...', log: '[install] mklink Desktop\\HAPPY.lnk' },
+            { p: 100, text: 'เสร็จสิ้น ✨', log: '[install] DONE — total 30s', success: true }
+        ];
+
+        let i = 0;
+        function nextStep() {
+            if (i >= steps.length) {
+                setTimeout(() => goTo(7), 600);
+                return;
+            }
+            const s = steps[i++];
+            fill.style.width = s.p + '%';
+            txt.textContent = s.text;
+            pct.textContent = s.p + '%';
+            const line = document.createElement('span');
+            line.className = 'log-line' + (s.success ? ' log-success' : '');
+            line.textContent = s.log;
+            log.appendChild(line);
+            log.scrollTop = log.scrollHeight;
+            setTimeout(nextStep, 700);
+        }
+        nextStep();
+    }
+</script>
+</body>
+</html>

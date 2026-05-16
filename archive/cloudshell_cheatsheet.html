@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📚 คู่มือคำสั่ง Cloud Shell ฉบับใช้จริง</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Sarabun', 'Noto Sans Thai', Helvetica, Arial, sans-serif;
+    line-height: 1.7;
+    color: #1a1a1a;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 24px;
+    background: #fafafa;
+  }
+  h1 {
+    color: #0a0a0a;
+    border-bottom: 3px solid #4f46e5;
+    padding-bottom: 12px;
+    margin-top: 0;
+  }
+  h2 {
+    color: #4f46e5;
+    margin-top: 40px;
+    padding-top: 16px;
+    border-top: 1px solid #e5e5e5;
+  }
+  h3 { color: #1f2937; margin-top: 24px; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 16px 0;
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  th, td {
+    border: 1px solid #e5e5e5;
+    padding: 10px 14px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background: #4f46e5;
+    color: white;
+    font-weight: 600;
+  }
+  tr:nth-child(even) td { background: #f9fafb; }
+  code {
+    background: #f3f4f6;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+    font-size: 0.9em;
+    color: #be185d;
+    word-break: break-all;
+  }
+  pre {
+    background: #1e293b;
+    color: #f1f5f9;
+    padding: 16px;
+    border-radius: 8px;
+    overflow-x: auto;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+  }
+  pre code {
+    background: transparent;
+    color: #f1f5f9;
+    padding: 0;
+  }
+  blockquote {
+    border-left: 4px solid #fbbf24;
+    background: #fffbeb;
+    margin: 16px 0;
+    padding: 12px 18px;
+    border-radius: 4px;
+  }
+  blockquote.warn {
+    border-left-color: #ef4444;
+    background: #fef2f2;
+  }
+  blockquote.tip {
+    border-left-color: #10b981;
+    background: #ecfdf5;
+  }
+  .toc {
+    background: white;
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
+    padding: 16px 24px;
+    margin: 24px 0;
+  }
+  .toc ul { margin: 8px 0; padding-left: 20px; }
+  .toc a { color: #4f46e5; text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  hr { border: none; border-top: 1px solid #e5e5e5; margin: 32px 0; }
+  .danger {
+    background: #fef2f2;
+    border: 2px solid #ef4444;
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 16px 0;
+  }
+  .danger code { background: #fee2e2; color: #991b1b; }
+  footer {
+    text-align: center;
+    color: #6b7280;
+    font-style: italic;
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid #e5e5e5;
+  }
+</style>
+</head>
+<body>
+
+<h1>📚 คู่มือคำสั่ง Cloud Shell / Linux ฉบับใช้จริง</h1>
+<p><em>สำหรับมือใหม่ — เน้นใช้บ่อย เน้นเข้าใจง่าย ไม่ต้องท่อง</em></p>
+
+<div class="toc">
+  <strong>📑 สารบัญ</strong>
+  <ul>
+    <li><a href="#sec1">1. เคลื่อนที่และดูไฟล์</a></li>
+    <li><a href="#sec2">2. อ่านไฟล์</a></li>
+    <li><a href="#sec3">3. แก้ไขไฟล์</a></li>
+    <li><a href="#sec4">4. จัดการไฟล์/โฟลเดอร์</a></li>
+    <li><a href="#sec5">5. ค้นหา</a></li>
+    <li><a href="#sec6">6. รัน Python</a></li>
+    <li><a href="#sec7">7. Google Cloud</a></li>
+    <li><a href="#sec8">8. ZIP / Compress</a></li>
+    <li><a href="#sec9">9. คำสั่งช่วยชีวิต</a></li>
+    <li><a href="#sec10">10. Trick ขั้นเทพ</a></li>
+    <li><a href="#danger">⚠️ คำสั่งที่ต้องระวัง</a></li>
+    <li><a href="#workflow">🎓 Workflow ตัวอย่าง</a></li>
+    <li><a href="#pipeline">📝 คำสั่งสำหรับ pipeline_v3.py</a></li>
+  </ul>
+</div>
+
+<h2 id="sec1">🗺️ 1. เคลื่อนที่และดูไฟล์ (ใช้บ่อยสุด)</h2>
+<table>
+<tr><th>คำสั่ง</th><th>ความหมาย</th><th>ตัวอย่าง</th></tr>
+<tr><td><code>pwd</code></td><td>ดูว่าตอนนี้อยู่โฟลเดอร์ไหน</td><td><code>pwd</code></td></tr>
+<tr><td><code>ls</code></td><td>ดูไฟล์ในโฟลเดอร์ปัจจุบัน</td><td><code>ls</code></td></tr>
+<tr><td><code>ls -lh</code></td><td>ดูไฟล์แบบละเอียด + ขนาดอ่านง่าย</td><td><code>ls -lh</code></td></tr>
+<tr><td><code>ls -la</code></td><td>ดูไฟล์ทุกตัวรวมไฟล์ซ่อน</td><td><code>ls -la</code></td></tr>
+<tr><td><code>cd ชื่อโฟลเดอร์</code></td><td>เข้าโฟลเดอร์</td><td><code>cd project</code></td></tr>
+<tr><td><code>cd ..</code></td><td>ออกไปโฟลเดอร์ก่อนหน้า</td><td><code>cd ..</code></td></tr>
+<tr><td><code>cd ~</code></td><td>กลับ home</td><td><code>cd ~</code></td></tr>
+<tr><td><code>cd /</code></td><td>ไป root สุด</td><td><code>cd /</code></td></tr>
+</table>
+
+<blockquote class="tip">💡 <strong>เคล็ดลับ:</strong> กด <code>Tab</code> = autocomplete ชื่อไฟล์/โฟลเดอร์ ไม่ต้องพิมพ์เต็ม!</blockquote>
+
+<h2 id="sec2">📖 2. อ่านไฟล์</h2>
+<table>
+<tr><th>คำสั่ง</th><th>ความหมาย</th></tr>
+<tr><td><code>cat ไฟล์</code></td><td>แสดงทั้งไฟล์</td></tr>
+<tr><td><code>head ไฟล์</code></td><td>แสดง 10 บรรทัดแรก</td></tr>
+<tr><td><code>head -20 ไฟล์</code></td><td>แสดง 20 บรรทัดแรก</td></tr>
+<tr><td><code>tail ไฟล์</code></td><td>แสดง 10 บรรทัดสุดท้าย</td></tr>
+<tr><td><code>tail -50 ไฟล์</code></td><td>แสดง 50 บรรทัดสุดท้าย</td></tr>
+<tr><td><code>less ไฟล์</code></td><td>เปิดดูแบบเลื่อนได้ (กด <code>q</code> ออก)</td></tr>
+<tr><td><code>wc -l ไฟล์</code></td><td>นับจำนวนบรรทัด</td></tr>
+</table>
+
+<h2 id="sec3">✏️ 3. แก้ไขไฟล์</h2>
+<table>
+<tr><th>คำสั่ง</th><th>ความหมาย</th></tr>
+<tr><td><code>nano ไฟล์</code></td><td>เปิดแก้ไข แบบง่ายสุด</td></tr>
+<tr><td><code>vim ไฟล์</code></td><td>เปิดแก้ไข แบบ pro (ยาก)</td></tr>
+<tr><td><code>cloudshell edit ไฟล์</code></td><td>เปิดใน Cloud Shell Editor (GUI สวย) ← <strong>แนะนำ</strong></td></tr>
+</table>
+
+<p><strong>ใน nano:</strong></p>
+<ul>
+  <li><code>Ctrl+O</code> = save</li>
+  <li><code>Ctrl+X</code> = ออก</li>
+  <li><code>Ctrl+W</code> = ค้นหา</li>
+</ul>
+
+<h2 id="sec4">📁 4. จัดการไฟล์/โฟลเดอร์</h2>
+<table>
+<tr><th>คำสั่ง</th><th>ความหมาย</th></tr>
+<tr><td><code>mkdir ชื่อ</code></td><td>สร้างโฟลเดอร์</td></tr>
+<tr><td><code>touch ไฟล์.txt</code></td><td>สร้างไฟล์เปล่า</td></tr>
+<tr><td><code>cp ต้นทาง ปลายทาง</code></td><td>คัดลอกไฟล์</td></tr>
+<tr><td><code>cp -r โฟลเดอร์ ปลายทาง</code></td><td>คัดลอกทั้งโฟลเดอร์</td></tr>
+<tr><td><code>mv ต้นทาง ปลายทาง</code></td><td>ย้าย/เปลี่ยนชื่อ</td></tr>
+<tr><td><code>rm ไฟล์</code></td><td>ลบไฟล์ ⚠️ ลบแล้วลบเลย ไม่มี recycle bin</td></tr>
+<tr><td><code>rm -r โฟลเดอร์</code></td><td>ลบทั้งโฟลเดอร์ ⚠️</td></tr>
+<tr><td><code>rm -rf โฟลเดอร์</code></td><td>ลบไม่ถาม ⚠️⚠️ ระวังพิมพ์ผิด!</td></tr>
+</table>
+
+<blockquote class="warn">🛡️ <strong>กฎเหล็ก:</strong> ก่อน <code>rm</code> ดูให้แน่ใจด้วย <code>ls</code> ก่อนเสมอ</blockquote>
+
+<h2 id="sec5">🔍 5. ค้นหา (สำคัญมาก)</h2>
+<table>
+<tr><th>คำสั่ง</th><th>ความหมาย</th></tr>
+<tr><td><code>grep "คำ" ไฟล์</code></td><td>หาคำในไฟล์</td></tr>
+<tr><td><code>grep -n "คำ" ไฟล์</code></td><td>หาคำพร้อมเลขบรรทัด</td></tr>
+<tr><td><code>grep -r "คำ" โฟลเดอร์</code></td><td>หาคำในทุกไฟล์ในโฟลเดอร์</td></tr>
+<tr><td><code>find . -name "*.py"</code></td><td>หาไฟล์ทั้งหมดที่ลงท้าย .py</td></tr>
+<tr><td><code>find . -name "test*"</code></td><td>หาไฟล์ที่ขึ้นต้นด้วย test</td></tr>
+</table>
+
+<p><strong>ตัวอย่างใช้จริง:</strong></p>
+<pre><code>grep -n "MODEL" pipeline_v3.py    # หาคำว่า MODEL ในไฟล์
+find ~ -name "*.txt"               # หาไฟล์ .txt ทั้งหมดใน home</code></pre>
+
+<h2 id="sec6">🐍 6. รัน Python</h2>
+<table>
+<tr><th>คำสั่ง</th><th>ความหมาย</th></tr>
+<tr><td><code>python ไฟล์.py</code></td><td>รันสคริปต์ Python</td></tr>
+<tr><td><code>python3 ไฟล์.py</code></td><td>ระบุ Python 3 (บางเครื่องต้องใช้)</td></tr>
+<tr><td><code>python -c "print('hi')"</code></td><td>รันโค้ดสั้นๆ บรรทัดเดียว</td></tr>
+<tr><td><code>pip install ชื่อ</code></td><td>ติดตั้ง library</td></tr>
+<tr><td><code>pip list</code></td><td>ดู library ที่ติดตั้งไว้</td></tr>
+</table>
+
+<h2 id="sec7">☁️ 7. Google Cloud (เฉพาะ Cloud Shell)</h2>
+<table>
+<tr><th>คำสั่ง</th><th>ความหมาย</th></tr>
+<tr><td><code>gcloud config list</code></td><td>ดูการตั้งค่าปัจจุบัน (project ฯลฯ)</td></tr>
+<tr><td><code>gcloud auth list</code></td><td>ดู account ที่ login</td></tr>
+<tr><td><code>gcloud projects list</code></td><td>ดูทุก project ที่มีสิทธิ์</td></tr>
+<tr><td><code>gcloud config set project XXX</code></td><td>เปลี่ยน project</td></tr>
+<tr><td><code>cloudshell download ไฟล์</code></td><td>ดาวน์โหลดไฟล์ลงเครื่อง</td></tr>
+<tr><td><code>cloudshell edit ไฟล์</code></td><td>เปิดด้วย Cloud Shell Editor</td></tr>
+<tr><td><code>gcloud storage ls gs://bucket</code></td><td>ดูไฟล์ใน GCS bucket</td></tr>
+<tr><td><code>gcloud storage cp ไฟล์ gs://bucket/</code></td><td>อัปไฟล์ขึ้น GCS</td></tr>
+</table>
+
+<h2 id="sec8">📦 8. ZIP / Compress</h2>
+<table>
+<tr><th>คำสั่ง</th><th>ความหมาย</th></tr>
+<tr><td><code>zip ผลลัพธ์.zip ไฟล์1 ไฟล์2</code></td><td>บีบหลายไฟล์</td></tr>
+<tr><td><code>zip -r ผลลัพธ์.zip โฟลเดอร์</code></td><td>บีบทั้งโฟลเดอร์</td></tr>
+<tr><td><code>unzip ไฟล์.zip</code></td><td>แตก zip</td></tr>
+<tr><td><code>tar -czf out.tar.gz โฟลเดอร์</code></td><td>บีบ tar.gz</td></tr>
+<tr><td><code>tar -xzf ไฟล์.tar.gz</code></td><td>แตก tar.gz</td></tr>
+</table>
+
+<h2 id="sec9">🎯 9. คำสั่งทั่วไปที่ช่วยชีวิต</h2>
+<table>
+<tr><th>คำสั่ง</th><th>ความหมาย</th></tr>
+<tr><td><code>clear</code> หรือ <code>Ctrl+L</code></td><td>ล้างหน้าจอ</td></tr>
+<tr><td><code>Ctrl+C</code></td><td>หยุดโปรแกรมที่รันอยู่</td></tr>
+<tr><td><code>Ctrl+D</code></td><td>ออกจาก python REPL / shell</td></tr>
+<tr><td><code>↑ ↓</code></td><td>เรียกคำสั่งเก่าที่เคยพิมพ์</td></tr>
+<tr><td><code>history</code></td><td>ดูคำสั่งทั้งหมดที่เคยพิมพ์</td></tr>
+<tr><td><code>!!</code></td><td>รันคำสั่งล่าสุดอีกครั้ง</td></tr>
+<tr><td><code>man คำสั่ง</code></td><td>อ่านคู่มือ (กด <code>q</code> ออก)</td></tr>
+</table>
+
+<h2 id="sec10">🛠️ 10. Trick ขั้นเทพ</h2>
+
+<h3>Redirect (เก็บผลลัพธ์ลงไฟล์)</h3>
+<pre><code>ls > files.txt                  # เซฟผล ls ลงไฟล์ (เขียนทับ)
+ls >> files.txt                 # เซฟต่อท้าย ไม่ทับ
+python app.py > log.txt 2>&1    # เซฟทั้ง output + error</code></pre>
+
+<h3>Pipe (ส่งผลลัพธ์เข้าคำสั่งต่อไป)</h3>
+<pre><code>ls | grep ".py"                 # ls แล้วกรองเฉพาะ .py
+cat ไฟล์ | head -20             # อ่านไฟล์ แสดง 20 บรรทัดแรก
+history | grep "python"         # หาคำสั่ง python ในประวัติ</code></pre>
+
+<h3>รันหลายคำสั่งทีเดียว</h3>
+<pre><code>mkdir test && cd test && touch a.txt    # ทำทีละขั้น หยุดถ้าพัง
+mkdir test ; cd test ; touch a.txt      # ทำทุกขั้น ไม่ว่าจะพังมั้ย</code></pre>
+
+<h3>แก้คำในไฟล์อัตโนมัติด้วย sed</h3>
+<pre><code>sed -i 's|ของเก่า|ของใหม่|g' ไฟล์
+sed -i 's|MODEL = ".*"|MODEL = "gemini-2.5-pro"|' pipeline_v3.py</code></pre>
+
+<h2 id="danger">🚨 คำสั่งที่ต้องระวัง</h2>
+<div class="danger">
+<pre><code>rm -rf /              # ⚠️ ลบทั้งเครื่อง! ห้ามรันเด็ดขาด
+rm -rf *              # ⚠️ ลบทุกอย่างในโฟลเดอร์ปัจจุบัน
+sudo คำสั่ง           # รันแบบ admin (Cloud Shell ส่วนใหญ่ไม่ต้องใช้)
+> ไฟล์ที่มีอยู่         # ⚠️ จะทำให้ไฟล์ว่างเปล่าทันที</code></pre>
+</div>
+
+<h2 id="workflow">🎓 Workflow ตัวอย่างจริง</h2>
+<p><strong>สมมติอยากรัน pipeline แล้วเซฟผลแยกๆ:</strong></p>
+<pre><code># 1. ดูว่ามีไฟล์อะไรบ้าง
+ls -lh
+
+# 2. ย้าย output เก่าออก (เผื่ออยากเก็บ)
+mv output_v3.txt output_v3_backup.txt
+
+# 3. รัน pipeline
+python pipeline_v3.py
+
+# 4. ดูขนาดผลลัพธ์
+ls -lh output_v3.txt
+
+# 5. ดู 20 บรรทัดแรก
+head -20 output_v3.txt
+
+# 6. หาคำว่า "ERROR" ในผล
+grep -n "ERROR" output_v3.txt
+
+# 7. zip ทั้งหมดเตรียมดาวน์โหลด
+zip result.zip output_v3.txt pipeline_v3.py
+
+# 8. ดาวน์โหลด
+cloudshell download result.zip</code></pre>
+
+<h2>💡 5 เคล็ดลับที่ควรจำ</h2>
+<ol>
+  <li><strong>Tab autocomplete</strong> — พิมพ์ครึ่งคำแล้วกด Tab ระบบจะเติมให้</li>
+  <li><strong>ปุ่ม ↑</strong> — เรียกคำสั่งเก่า ไม่ต้องพิมพ์ใหม่</li>
+  <li><strong><code>man คำสั่ง</code></strong> — อ่านคู่มือเอง (เช่น <code>man ls</code>)</li>
+  <li><strong><code>คำสั่ง --help</code></strong> — ดูวิธีใช้แบบสั้นๆ</li>
+  <li><strong>ก่อนลบ ดูก่อน</strong> — <code>ls</code> หรือ <code>cat</code> ก่อน <code>rm</code> เสมอ</li>
+</ol>
+
+<h2 id="pipeline">📝 คำสั่งสำหรับ pipeline_v3.py โดยเฉพาะ</h2>
+
+<h3>เช็คโมเดลที่ใช้</h3>
+<pre><code>grep "MODEL = " pipeline_v3.py</code></pre>
+
+<h3>เปลี่ยนโมเดล</h3>
+<pre><code>sed -i 's|MODEL = ".*"|MODEL = "gemini-2.5-pro"|' pipeline_v3.py</code></pre>
+
+<h3>ลด sleep ให้รันเร็วขึ้น</h3>
+<pre><code>sed -i 's|time.sleep(120)|time.sleep(10)|g' pipeline_v3.py</code></pre>
+
+<h3>ดูรายชื่อโมเดลที่ใช้ได้</h3>
+<pre><code>python -c "
+from google import genai
+client = genai.Client(vertexai=True, project='nick-ai-agent-2026', location='us-central1')
+for m in client.models.list():
+    print(m.name)
+"</code></pre>
+
+<h3>Backup output ก่อนรันรอบใหม่</h3>
+<pre><code>mv output_v3.txt output_v3_$(date +%Y%m%d_%H%M%S).txt</code></pre>
+
+<h2>📤 วิธีดาวน์โหลด / อัปขึ้น Drive</h2>
+
+<h3>ดาวน์โหลดจาก Cloud Shell ลงเครื่อง</h3>
+<pre><code>cloudshell download ชื่อไฟล์</code></pre>
+
+<h3>อัปขึ้น Cloud Storage (GCS)</h3>
+<pre><code>gcloud storage cp ไฟล์ gs://nick-ai-agent-output/</code></pre>
+
+<h3>อัปขึ้น Google Drive (วิธีง่ายสุด)</h3>
+<ol>
+  <li><code>cloudshell download ไฟล์</code> → ดาวน์โหลดลงเครื่อง</li>
+  <li>เปิด drive.google.com → ลากไฟล์เข้า</li>
+</ol>
+
+<footer>
+  คู่มือนี้ออกแบบมาเพื่อใช้งานจริง ไม่ต้องท่อง แค่เปิดดูตอนใช้<br>
+  สร้างเมื่อ พฤษภาคม 2026
+</footer>
+
+</body>
+</html>

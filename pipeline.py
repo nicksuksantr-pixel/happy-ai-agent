@@ -15,11 +15,14 @@ from agents import (
     CONTEXT_MAP, get_context_keys,
 )
 
-SESSIONS_DIR = Path("sessions")
+# Fix 2026-05-16 (Coddy #4 Day 2): ย้าย sessions ไปเก็บที่ user-profile (`~/.happy/sessions/`)
+# เดิม Path("sessions") = relative ไป cwd → fragile (เปิด HAPPY จาก Start Menu/Desktop/shell
+# cwd ต่างกัน → sessions ไปคนละที่). ตอนนี้รวมกับ auth.json ใน ~/.happy/ ที่เดียวกัน
+SESSIONS_DIR = Path.home() / ".happy" / "sessions"
 
 
 def create_session(task, model, settings):
-    SESSIONS_DIR.mkdir(exist_ok=True)
+    SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     session_path = SESSIONS_DIR / timestamp
     session_path.mkdir(parents=True, exist_ok=True)

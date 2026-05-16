@@ -34,6 +34,14 @@ env/
 dist/
 build/
 
+# Installer build outputs — .iss script + assets ใน installer/ ส่งขึ้น git ได้
+# แต่ compiled .exe ใหญ่เกินไป ไม่ commit
+installer/output/
+
+# Release archive — .exe/.zip ใหญ่ ไม่ commit (แต่ release-notes.md เก็บได้)
+releases/*/*.exe
+releases/*/*.zip
+
 # Backups
 *.bak
 *.bak[0-9]*

@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ระบบดาวเทียม — สื่อการเรียนรู้</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0e1a;
+  --bg2: #0d1628;
+  --bg3: #111c2e;
+  --bg4: #162036;
+  --accent: #4fc3f7;
+  --accent2: #0288d1;
+  --accent3: #81d4fa;
+  --purple: #7986cb;
+  --purple2: #5c6bc0;
+  --green: #66bb6a;
+  --red: #ef5350;
+  --orange: #ffa726;
+  --yellow: #ffd54f;
+  --text: #e8eaf6;
+  --text2: #b0bec5;
+  --text3: #78909c;
+  --card: rgba(255,255,255,0.04);
+  --border: rgba(79,195,247,0.15);
+  --glow: 0 0 20px rgba(79,195,247,0.3);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'Sarabun', sans-serif; background: var(--bg); color: var(--text); }
+
+/* ===== CANVAS STARS ===== */
+#starCanvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+
+/* ===== SLIDE CONTAINER ===== */
+#app { position: relative; width: 100%; height: 100vh; overflow: hidden; z-index: 1; }
+.slide { position: absolute; top: 0; left: 0; width: 100%; height: 100vh; overflow-y: auto; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 30px 20px 80px; opacity: 0; transform: translateX(60px); transition: opacity 0.5s ease, transform 0.5s ease; pointer-events: none; }
+.slide.active { opacity: 1; transform: translateX(0); pointer-events: all; }
+.slide.exit-left { opacity: 0; transform: translateX(-60px); }
+
+/* ===== NAV BAR ===== */
+#navbar { position: fixed; bottom: 0; left: 0; width: 100%; z-index: 100; background: rgba(10,14,26,0.95); border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: center; gap: 16px; padding: 10px 20px; }
+.nav-btn { background: var(--bg3); border: 1px solid var(--border); color: var(--accent); padding: 8px 20px; border-radius: 20px; cursor: pointer; font-family: 'Sarabun', sans-serif; font-size: 14px; font-weight: 600; transition: all 0.2s; }
+.nav-btn:hover { background: var(--accent2); color: #fff; box-shadow: var(--glow); }
+.nav-btn:disabled { opacity: 0.3; cursor: default; }
+#pageIndicator { color: var(--text2); font-size: 13px; min-width: 80px; text-align: center; }
+.page-dots { display: flex; gap: 6px; }
+.page-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--bg4); border: 1px solid var(--border); cursor: pointer; transition: all 0.2s; }
+.page-dot.active { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+
+/* ===== TYPOGRAPHY ===== */
+.page-title { font-size: 2rem; font-weight: 800; color: var(--accent); text-align: center; margin-bottom: 8px; text-shadow: 0 0 30px rgba(79,195,247,0.4); }
+.page-subtitle { font-size: 1rem; color: var(--text2); text-align: center; margin-bottom: 24px; }
+.section-title { font-size: 1.2rem; font-weight: 700; color: var(--accent3); margin-bottom: 12px; padding-left: 12px; border-left: 3px solid var(--accent); }
+
+/* ===== CARDS ===== */
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; margin-bottom: 16px; backdrop-filter: blur(8px); width: 100%; max-width: 800px; }
+.card:hover { border-color: rgba(79,195,247,0.35); box-shadow: var(--glow); }
+.tip-box { background: rgba(79,195,247,0.08); border: 1px solid rgba(79,195,247,0.25); border-radius: 12px; padding: 14px 16px; margin: 12px 0; font-size: 0.9rem; color: var(--accent3); }
+.tip-box::before { content: "💡 "; }
+
+/* ===== FADE IN ===== */
+.fade-in { opacity: 0; transform: translateY(20px); transition: opacity 0.6s ease, transform 0.6s ease; }
+.fade-in.visible { opacity: 1; transform: translateY(0); }
+
+/* ===========================
+   PAGE 1 — COVER
+=========================== */
+#slide1 { justify-content: center; }
+.cover-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 16px; }
+.orbit-system { position: relative; width: 220px; height: 220px; margin: 20px auto; }
+.earth { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 70px; height: 70px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #42a5f5, #1565c0, #0d47a1); box-shadow: 0 0 30px rgba(66,165,245,0.5), inset -10px -5px 20px rgba(0,0,0,0.4); animation: earthSpin 20s linear infinite; }
+@keyframes earthSpin { from { box-shadow: 0 0 30px rgba(66,165,245,0.5), inset -10px -5px 20px rgba(0,0,0,0.4); } 50% { box-shadow: 0 0 40px rgba(66,165,245,0.7), inset 10px -5px 20px rgba(0,0,0,0.4); } to { box-shadow: 0 0 30px rgba(66,165,245,0.5), inset -10px -5px 20px rgba(0,0,0,0.4); } }
+.orbit-ring { position: absolute; top: 50%; left: 50%; border-radius: 50%; border: 1px dashed rgba(79,195,247,0.25); transform: translate(-50%,-50%); }
+.orbit-ring1 { width: 120px; height: 120px; }
+.orbit-ring2 { width: 180px; height: 180px; }
+.orbit-ring3 { width: 220px; height: 220px; }
+.sat { position: absolute; width: 16px; height: 16px; margin: -8px; font-size: 14px; display: flex; align-items: center; justify-content: center; }
+.sat1 { top: 50%; left: 50%; animation: orbitSat1 4s linear infinite; transform-origin: 60px 0; }
+.sat2 { top: 50%; left: 50%; animation: orbitSat2 7s linear infinite; transform-origin: 90px 0; }
+.sat3 { top: 50%; left: 50%; animation: orbitSat3 12s linear infinite; transform-origin: 110px 0; }
+@keyframes orbitSat1 { from { transform: rotate(0deg) translateX(60px) rotate(0deg); } to { transform: rotate(360deg) translateX(60px) rotate(-360deg); } }
+@keyframes orbitSat2 { from { transform: rotate(120deg) translateX(90px) rotate(-120deg); } to { transform: rotate(480deg) translateX(90px) rotate(-480deg); } }
+@keyframes orbitSat3 { from { transform: rotate(240deg) translateX(110px) rotate(-240deg); } to { transform: rotate(600deg) translateX(110px) rotate(-600deg); } }
+.cover-title { font-size: 2.8rem; font-weight: 800; background: linear-gradient(135deg, var(--accent), var(--purple)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; line-height: 1.2; }
+.cover-en { font-size: 1.1rem; color: var(--accent2); letter-spacing: 3px; font-weight: 500; text-transform: uppercase; }
+.cover-desc { font-size: 0.95rem; color: var(--text2); max-width: 400px; line-height: 1.7; }
+.start-btn { background: linear-gradient(135deg, var(--accent2), var(--purple2)); color: #fff; border: none; padding: 14px 40px; border-radius: 30px; font-family: 'Sarabun', sans-serif; font-size: 1.1rem; font-weight: 700; cursor: pointer; box-shadow: 0 0 25px rgba(79,195,247,0.4); transition: all 0.3s; animation: pulse-btn 2s ease-in-out infinite; }
+.start-btn:hover { transform: scale(1.05); box-shadow: 0 0 40px rgba(79,195,247,0.6); }
+@keyframes pulse-btn { 0%,100% { box-shadow: 0 0 25px rgba(79,195,247,0.4); } 50% { box-shadow: 0 0 40px rgba(79,195,247,0.7); } }
+.toc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-width: 500px; margin-top: 8px; }
+.toc-item { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; font-size: 0.82rem; color: var(--text2); cursor: pointer; transition: all 0.2s; }
+.toc-item:hover { border-color: var(--accent); color: var(--accent); }
+.toc-num { color: var(--accent); font-weight: 700; margin-right: 4px; }
+
+/* ===========================
+   PAGE 2 — WHAT IS SATELLITE
+=========================== */
+.def-box { background: rgba(79,195,247,0.06); border: 1px solid rgba(79,195,247,0.2); border-radius: 14px; padding: 18px 20px; text-align: center; margin-bottom: 20px; width: 100%; max-width: 800px; }
+.def-box .big { font-size: 1.3rem; font-weight: 700; color: var(--accent); margin-bottom: 6px; }
+.def-box p { font-size: 0.95rem; color: var(--text); line-height: 1.8; }
+
+/* Timeline */
+.timeline { position: relative; padding-left: 28px; width: 100%; max-width: 800px; margin-bottom: 20px; }
+.timeline::before { content: ''; position: absolute; left: 10px; top: 0; bottom: 0; width: 2px; background: linear-gradient(to bottom, var(--accent), var(--purple)); }
+.tl-item { position: relative; margin-bottom: 16px; opacity: 0; transform: translateX(-20px); transition: opacity 0.5s ease, transform 0.5s ease; }
+.tl-item.visible { opacity: 1; transform: translateX(0); }
+.tl-dot { position: absolute; left: -23px; top: 6px; width: 12px; height: 12px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+.tl-year { font-size: 0.8rem; font-weight: 700; color: var(--accent); margin-bottom: 2px; }
+.tl-text { font-size: 0.88rem; color: var(--text2); line-height: 1.5; }
+
+/* Orbit steps */
+.steps-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; max-width: 800px; }
+.step-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; display: flex; gap: 12px; align-items: flex-start; }
+.step-num { min-width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, var(--accent2), var(--purple2)); display: flex; align-items: center; justify-content: center; font-size: 0.9rem; font-weight: 800; color: #fff; flex-shrink: 0; }
+.step-text { font-size: 0.88rem; color: var(--text); line-height: 1.6; }
+
+/* ===========================
+   PAGE 3 — ORBIT TYPES
+=========================== */
+.orbit-demo { position: relative; width: 280px; height: 280px; margin: 10px auto 20px; flex-shrink: 0; }
+.od-earth { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 50px; height: 50px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #42a5f5, #0d47a1); box-shadow: 0 0 20px rgba(66,165,245,0.5); z-index: 5; }
+.od-ring { position: absolute; top: 50%; left: 50%; border-radius: 50%; transform: translate(-50%,-50%); cursor: pointer; transition: all 0.2s; }
+.od-ring:hover { filter: brightness(1.5); }
+.od-ring.leo { width: 110px; height: 110px; border: 2px solid rgba(102,187,106,0.6); }
+.od-ring.meo { width: 180px; height: 180px; border: 2px solid rgba(255,167,38,0.6); }
+.od-ring.geo { width: 260px; height: 260px; border: 2px solid rgba(121,134,203,0.6); }
+.od-sat { position: absolute; width: 12px; height: 12px; font-size: 11px; display: flex; align-items: center; justify-content: center; z-index: 10; }
+.od-sat.leo { animation: orbitLeo 3s linear infinite; transform-origin: 55px 0; top: 50%; left: 50%; margin: -6px; }
+.od-sat.meo { animation: orbitMeo 6s linear infinite; transform-origin: 90px 0; top: 50%; left: 50%; margin: -6px; }
+.od-sat.geo { animation: orbitGeo 15s linear infinite; transform-origin: 130px 0; top: 50%; left: 50%; margin: -6px; }
+@keyframes orbitLeo { from { transform: rotate(0deg) translateX(55px) rotate(0deg); } to { transform: rotate(360deg) translateX(55px) rotate(-360deg); } }
+@keyframes orbitMeo { from { transform: rotate(90deg) translateX(90px) rotate(-90deg); } to { transform: rotate(450deg) translateX(90px) rotate(-450deg); } }
+@keyframes orbitGeo { from { transform: rotate(200deg) translateX(130px) rotate(-200deg); } to { transform: rotate(560deg) translateX(130px) rotate(-560deg); } }
+.orbit-labels { position: absolute; inset: 0; pointer-events: none; }
+.orbit-label { position: absolute; font-size: 0.7rem; font-weight: 700; padding: 2px 6px; border-radius: 8px; cursor: pointer; pointer-events: all; }
+.orbit-label.leo { top: 37%; right: 3%; background: rgba(102,187,106,0.2); color: #66bb6a; border: 1px solid rgba(102,187,106,0.4); }
+.orbit-label.meo { top: 20%; right: 2%; background: rgba(255,167,38,0.2); color: #ffa726; border: 1px solid rgba(255,167,38,0.4); }
+.orbit-label.geo { top: 5%; left: 50%; transform: translateX(-50%); background: rgba(121,134,203,0.2); color: #7986cb; border: 1px solid rgba(121,134,203,0.4); }
+.orbit-popup { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); background: var(--bg2); border: 1px solid var(--border); border-radius: 16px; padding: 20px 24px; z-index: 500; max-width: 320px; width: 90%; display: none; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+.orbit-popup.show { display: block; animation: popIn 0.3s ease; }
+@keyframes popIn { from { opacity:0; transform: translate(-50%,-50%) scale(0.8); } to { opacity:1; transform: translate(-50%,-50%) scale(1); } }
+.popup-close { position: absolute; top: 10px; right: 14px; cursor: pointer; color: var(--text3); font-size: 1.2rem; }
+.orbit-table { width: 100%; max-width: 800px; border-collapse: collapse; margin-bottom: 16px; }
+.orbit-table th { background: rgba(79,195,247,0.1); color: var(--accent); font-size: 0.85rem; padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+.orbit-table td { font-size: 0.82rem; color: var(--text2); padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.orbit-table tr:hover td { background: rgba(79,195,247,0.04); }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 700; }
+.badge-green { background: rgba(102,187,106,0.15); color: #66bb6a; }
+.badge-orange { background: rgba(255,167,38,0.15); color: #ffa726; }
+.badge-purple { background: rgba(121,134,203,0.15); color: #7986cb; }
+.badge-blue { background: rgba(79,195,247,0.15); color: #4fc3f7; }
+
+/* ===========================
+   PAGE 4 — HOW SATELLITES WORK
+=========================== */
+.signal-demo { width: 100%; max-width: 700px; background: var(--bg3); border: 1px solid var(--border); border-radius: 14px; padding: 20px; margin-bottom: 20px; position: relative; overflow: hidden; }
+.signal-scene { position: relative; height: 120px; }
+.sig-ground { position: absolute; bottom: 0; left: 10%; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.sig-ground2 { position: absolute; bottom: 0; right: 10%; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.sig-sat { position: absolute; top: 5px; left: 50%; transform: translateX(-50%); font-size: 28px; }
+.sig-label { font-size: 0.7rem; color: var(--text3); }
+.antenna-icon { font-size: 22px; }
+.sig-line { position: absolute; height: 2px; background: linear-gradient(90deg, transparent, var(--accent), transparent); border-radius: 2px; opacity: 0; }
+.sig-up { width: 35%; left: 17%; top: 55%; transform: rotate(-30deg); transform-origin: left center; }
+.sig-down { width: 35%; right: 17%; top: 55%; transform: rotate(30deg); transform-origin: right center; }
+.sig-line.playing { animation: sigPulse 1.5s ease-in-out infinite; }
+.sig-up.playing { animation: sigUp 1.5s ease infinite; }
+.sig-down.playing { animation: sigDown 1.5s ease infinite 0.75s; }
+@keyframes sigUp { 0%,100%{opacity:0} 30%,70%{opacity:1} }
+@keyframes sigDown { 0%,100%{opacity:0} 30%,70%{opacity:1} }
+.play-btn { background: linear-gradient(135deg, var(--accent2), var(--purple2)); color: #fff; border: none; padding: 8px 20px; border-radius: 20px; font-family: 'Sarabun', sans-serif; font-size: 0.85rem; font-weight: 600; cursor: pointer; display: block; margin: 10px auto 0; transition: all 0.2s; }
+.play-btn:hover { transform: scale(1.05); }
+.steps4 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; max-width: 800px; }
+.step4-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 16px; }
+.step4-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.step4-num { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; font-weight: 800; color: #fff; flex-shrink: 0; }
+.s4n1 { background: var(--accent2); }
+.s4n2 { background: var(--purple2); }
+.s4n3 { background: #e65100; }
+.s4n4 { background: #2e7d32; }
+.step4-title { font-size: 0.9rem; font-weight: 700; color: var(--text); }
+.step4-body { font-size: 0.82rem; color: var(--text2); line-height: 1.7; }
+.step4-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.tag { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 2px 8px; font-size: 0.72rem; color: var(--text3); }
+
+/* ===========================
+   PAGE 5 — COMPONENTS
+=========================== */
+.sat-diagram-wrap { display: flex; gap: 24px; width: 100%; max-width: 800px; flex-wrap: wrap; justify-content: center; }
+.sat-svg-container { position: relative; flex-shrink: 0; }
+.comp-info-panel { flex: 1; min-width: 220px; background: var(--bg3); border: 1px solid var(--border); border-radius: 14px; padding: 18px; }
+.comp-info-panel h3 { font-size: 1rem; font-weight: 700; color: var(--accent); margin-bottom: 8px; }
+.comp-info-panel p { font-size: 0.85rem; color: var(--text2); line-height: 1.7; }
+.comp-info-panel .comp-detail { font-size: 0.8rem; color: var(--text3); margin-top: 8px; padding: 8px 10px; background: var(--card); border-radius: 8px; }
+.comp-chips { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; max-width: 800px; margin-top: 12px; }
+.comp-chip { padding: 6px 14px; border-radius: 20px; font-size: 0.82rem; cursor: pointer; border: 1px solid var(--border); background: var(--card); color: var(--text2); transition: all 0.2s; }
+.comp-chip:hover, .comp-chip.active { background: rgba(79,195,247,0.1); border-color: var(--accent); color: var(--accent); }
+
+/* SVG hotspot */
+.hotspot { cursor: pointer; transition: all 0.2s; }
+.hotspot circle { fill: rgba(79,195,247,0.15); stroke: var(--accent); stroke-width: 1.5; animation: hotpulse 2s ease-in-out infinite; }
+.hotspot:hover circle { fill: rgba(79,195,247,0.35); }
+.hotspot.active circle { fill: rgba(79,195,247,0.4); stroke: #fff; stroke-width: 2; }
+@keyframes hotpulse { 0%,100%{stroke-opacity:0.6} 50%{stroke-opacity:1} }
+
+/* ===========================
+   PAGE 6 — APPLICATIONS
+=========================== */
+.flip-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; width: 100%; max-width: 800px; }
+.flip-card { height: 160px; perspective: 800px; cursor: pointer; }
+.flip-inner { position: relative; width: 100%; height: 100%; transition: transform 0.6s; transform-style: preserve-3d; border-radius: 14px; }
+.flip-card.flipped .flip-inner { transform: rotateY(180deg); }
+.flip-front, .flip-back { position: absolute; inset: 0; border-radius: 14px; backface-visibility: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 14px; border: 1px solid var(--border); }
+.flip-front { background: var(--bg3); }
+.flip-back { background: var(--bg4); transform: rotateY(180deg); border-color: rgba(79,195,247,0.3); }
+.flip-icon { font-size: 2.2rem; margin-bottom: 8px; }
+.flip-front-title { font-size: 0.88rem; font-weight: 700; color: var(--text); text-align: center; }
+.flip-front-hint { font-size: 0.7rem; color: var(--text3); margin-top: 4px; }
+.flip-back-title { font-size: 0.85rem; font-weight: 700; color: var(--accent); margin-bottom: 8px; text-align: center; }
+.flip-back-text { font-size: 0.78rem; color: var(--text2); text-align: center; line-height: 1.6; }
+
+/* ===========================
+   PAGE 7 — FAMOUS SATELLITES
+=========================== */
+.sat-cards-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; width: 100%; max-width: 800px; }
+.sat-world-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 18px; opacity: 0; transform: translateX(-30px); transition: opacity 0.6s ease, transform 0.6s ease; }
+.sat-world-card.visible { opacity: 1; transform: translateX(0); }
+.sat-world-card:nth-child(2) { transition-delay: 0.15s; }
+.sat-world-card:nth-child(3) { transition-delay: 0.3s; }
+.sat-world-card:nth-child(4) { transition-delay: 0.45s; }
+.swc-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.swc-icon { font-size: 1.8rem; }
+.swc-title { font-size: 1rem; font-weight: 700; color: var(--accent); }
+.swc-subtitle { font-size: 0.75rem; color: var(--text3); }
+.swc-body { font-size: 0.82rem; color: var(--text2); line-height: 1.7; }
+.swc-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+.thaicom-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 8px; }
+.thaicom-table th { color: var(--accent3); font-weight: 600; padding: 4px 8px; text-align: left; border-bottom: 1px solid var(--border); }
+.thaicom-table td { color: var(--text2); padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+
+/* ===========================
+   PAGE 8 — QUIZ
+=========================== */
+.quiz-wrap { width: 100%; max-width: 700px; }
+.quiz-progress { height: 6px; background: var(--bg3); border-radius: 3px; margin-bottom: 20px; overflow: hidden; }
+.quiz-bar { height: 100%; background: linear-gradient(90deg, var(--accent2), var(--purple)); border-radius: 3px; transition: width 0.4s ease; }
+.quiz-q-num { font-size: 0.85rem; color: var(--text3); margin-bottom: 8px; }
+.quiz-q-text { font-size: 1.1rem; font-weight: 700; color: var(--text); margin-bottom: 20px; line-height: 1.6; }
+.quiz-options { display: grid; gap: 10px; }
+.quiz-opt { background: var(--bg3); border: 2px solid var(--border); border-radius: 12px; padding: 12px 16px; cursor: pointer; font-family: 'Sarabun', sans-serif; font-size: 0.92rem; color: var(--text); text-align: left; transition: all 0.2s; display: flex; align-items: center; gap: 10px; }
+.quiz-opt:hover:not(:disabled) { border-color: var(--accent); background: rgba(79,195,247,0.05); }
+.quiz-opt.correct { border-color: var(--green); background: rgba(102,187,106,0.1); color: var(--green); }
+.quiz-opt.wrong { border-color: var(--red); background: rgba(239,83,80,0.1); color: var(--red); }
+.quiz-opt:disabled { cursor: default; }
+.quiz-opt-letter { width: 28px; height: 28px; border-radius: 50%; border: 1.5px solid currentColor; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; flex-shrink: 0; }
+.quiz-explain { margin-top: 14px; padding: 12px 16px; background: rgba(255,255,255,0.04); border-radius: 10px; font-size: 0.85rem; color: var(--text2); line-height: 1.7; display: none; }
+.quiz-explain.show { display: block; animation: fadeInUp 0.3s ease; }
+@keyframes fadeInUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+.quiz-next-btn { margin-top: 16px; background: linear-gradient(135deg, var(--accent2), var(--purple2)); color: #fff; border: none; padding: 10px 28px; border-radius: 20px; font-family: 'Sarabun', sans-serif; font-size: 0.92rem; font-weight: 700; cursor: pointer; display: none; transition: all 0.2s; }
+.quiz-next-btn.show { display: inline-block; }
+.quiz-next-btn:hover { transform: scale(1.05); }
+.quiz-result { text-align: center; padding: 20px; }
+.result-score { font-size: 4rem; font-weight: 800; background: linear-gradient(135deg, var(--accent), var(--yellow)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+.result-label { font-size: 1.4rem; font-weight: 700; margin: 8px 0; }
+.result-stars { font-size: 2rem; margin: 10px 0; letter-spacing: 4px; }
+.result-desc { font-size: 0.95rem; color: var(--text2); margin: 10px 0 20px; }
+.retry-btn { background: var(--bg3); border: 1px solid var(--border); color: var(--accent); padding: 10px 24px; border-radius: 20px; cursor: pointer; font-family: 'Sarabun', sans-serif; font-size: 0.9rem; font-weight: 600; transition: all 0.2s; }
+.retry-btn:hover { background: var(--accent2); color: #fff; }
+
+/* RESPONSIVE */
+@media (max-width: 600px) {
+  .steps-grid, .steps4, .flip-grid, .sat-cards-grid { grid-template-columns: 1fr; }
+  .cover-title { font-size: 2rem; }
+  .toc-grid { grid-template-columns: 1fr; }
+  .sat-diagram-wrap { flex-direction: column; }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<canvas id="starCanvas"></canvas>
+
+<div id="app">
+
+<!-- ===== PAGE 1: COVER ===== -->
+<div class="slide active" id="slide1">
+  <div class="cover-wrap">
+    <div style="font-size:3rem; margin-bottom:-10px;">🛰️</div>
+    <div class="orbit-system">
+      <div class="earth"></div>
+      <div class="orbit-ring orbit-ring1"></div>
+      <div class="orbit-ring orbit-ring2"></div>
+      <div class="orbit-ring orbit-ring3"></div>
+      <div class="sat sat1">🛰</div>
+      <div class="sat sat2">🛸</div>
+      <div class="sat sat3">📡</div>
+    </div>
+    <div class="cover-title">ระบบดาวเทียม</div>
+    <div class="cover-en">Satellite Systems</div>
+    <div class="cover-desc">สื่อการเรียนรู้สำหรับผู้เริ่มต้น — เข้าใจง่าย ครบทุกเรื่อง ตั้งแต่นิยามไปจนถึง Starlink</div>
+    <button class="start-btn" onclick="goToPage(2)">เริ่มเรียนรู้ →</button>
+    <div class="toc-grid" style="margin-top:20px;">
+      <div class="toc-item" onclick="goToPage(2)"><span class="toc-num">1.</span> ดาวเทียมคืออะไร?</div>
+      <div class="toc-item" onclick="goToPage(3)"><span class="toc-num">2.</span> ประเภท LEO/MEO/GEO</div>
+      <div class="toc-item" onclick="goToPage(4)"><span class="toc-num">3.</span> ทำงานอย่างไร?</div>
+      <div class="toc-item" onclick="goToPage(5)"><span class="toc-num">4.</span> ส่วนประกอบ</div>
+      <div class="toc-item" onclick="goToPage(6)"><span class="toc-num">5.</span> การใช้งาน</div>
+      <div class="toc-item" onclick="goToPage(7)"><span class="toc-num">6.</span> ดาวเทียมโลก</div>
+      <div class="toc-item" onclick="goToPage(8)"><span class="toc-num">7.</span> แบบทดสอบ</div>
+      <div class="toc-item" style="opacity:0.3; cursor:default;"><span class="toc-num">★</span> 8 หน้า</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PAGE 2: WHAT IS SATELLITE ===== -->
+<div class="slide" id="slide2">
+  <div class="page-title">ดาวเทียมคืออะไร?</div>
+  <div class="page-subtitle">นิยาม ประวัติ และหลักการพื้นฐาน</div>
+
+  <div class="def-box fade-in">
+    <div class="big">🛰️ ดาวเทียม (Satellite)</div>
+    <p>คือ <strong>วัตถุที่มนุษย์สร้างขึ้น</strong> แล้วส่งขึ้นไปโคจรรอบโลก หรือรอบดาวเคราะห์ดวงอื่น โดยอาศัย<strong>แรงโน้มถ่วง</strong>เป็นแรงดึงดูด และความเร็วในการเคลื่อนที่เป็นแรงหนีศูนย์กลาง ทำให้โคจรอยู่ได้โดยไม่ตกลงมา</p>
+  </div>
+  <div class="tip-box fade-in" style="max-width:800px; width:100%;">เปรียบง่ายๆ ดาวเทียมเหมือนลูกบอลที่เราขว้างแรงมากๆ จนมันวิ่งวนรอบโลกไม่ตกลงมา เพราะแรงเหวี่ยงสมดุลกับแรงโน้มถ่วงพอดี</div>
+
+  <div class="section-title fade-in" style="max-width:800px;width:100%;">📅 ประวัติดาวเทียม (Timeline)</div>
+  <div class="timeline">
+    <div class="tl-item"><div class="tl-dot"></div><div class="tl-year">1957</div><div class="tl-text">🚀 <strong>Sputnik 1</strong> (สหภาพโซเวียต) — ดาวเทียมดวงแรกของโลก ส่งขึ้นสู่อวกาศเมื่อ 4 ต.ค.</div></div>
+    <div class="tl-item"><div class="tl-dot"></div><div class="tl-year">1962</div><div class="tl-text">📡 <strong>Telstar 1</strong> (สหรัฐฯ) — ดาวเทียมสื่อสารดวงแรก ถ่ายทอดสัญญาณโทรทัศน์ข้ามมหาสมุทรได้</div></div>
+    <div class="tl-item"><div class="tl-dot"></div><div class="tl-year">1969</div><div class="tl-text">🌕 ดาวเทียมช่วยสนับสนุนภารกิจ <strong>Apollo 11</strong> ให้นักบินลงดวงจันทร์สำเร็จ</div></div>
+    <div class="tl-item"><div class="tl-dot"></div><div class="tl-year">1990</div><div class="tl-text">🗺️ <strong>GPS</strong> เริ่มใช้งานเชิงพาณิชย์อย่างเป็นทางการ นำทางได้ทั่วโลก</div></div>
+    <div class="tl-item"><div class="tl-dot"></div><div class="tl-year">2005</div><div class="tl-text">🇹🇭 <strong>Thaicom 4</strong> (iPSTAR) — ดาวเทียมอินเทอร์เน็ตความเร็วสูงของไทย</div></div>
+    <div class="tl-item"><div class="tl-dot"></div><div class="tl-year">2015</div><div class="tl-text">🌐 <strong>SpaceX</strong> เริ่มโครงการ Starlink วางแผนส่งดาวเทียม 42,000 ดวง</div></div>
+    <div class="tl-item"><div class="tl-dot"></div><div class="tl-year">2026</div><div class="tl-text">🛰 <strong>ปัจจุบัน</strong> มีดาวเทียมที่ใช้งานอยู่มากกว่า <strong>9,000 ดวง</strong> รอบโลก</div></div>
+  </div>
+
+  <div class="section-title fade-in" style="max-width:800px;width:100%;">⚡ ทำไมดาวเทียมถึงไม่ตก?</div>
+  <div class="steps-grid">
+    <div class="step-card fade-in"><div class="step-num">1</div><div class="step-text"><strong>แรงโน้มถ่วง</strong>ดึงดาวเทียมลงสู่โลกตลอดเวลา</div></div>
+    <div class="step-card fade-in"><div class="step-num">2</div><div class="step-text">ดาวเทียมเคลื่อนที่ด้วย<strong>ความเร็วสูงมาก</strong> (~7.9 km/s ที่ LEO)</div></div>
+    <div class="step-card fade-in"><div class="step-num">3</div><div class="step-text">ดาวเทียมตกลงมาตลอด <strong>แต่โลกโค้งหนีออกไปพอดี</strong></div></div>
+    <div class="step-card fade-in"><div class="step-num">4</div><div class="step-text">เกิด<strong>การโคจรอย่างสมดุล</strong>โดยไม่ตกถึงพื้น</div></div>
+  </div>
+  <div class="tip-box fade-in" style="max-width:800px;width:100%;">ยิ่งอยู่สูง แรงโน้มถ่วงยิ่งน้อย จึงต้องการความเร็วน้อยลงในการโคจร — ดาวเทียม GEO สูง 35,786 km ใช้ความเร็วเพียง 3.07 km/s</div>
+</div>
+
+<!-- ===== PAGE 3: ORBIT TYPES ===== -->
+<div class="slide" id="slide3">
+  <div class="page-title">ประเภทของดาวเทียม</div>
+  <div class="page-subtitle">จำแนกตามความสูงของวงโคจร — LEO / MEO / GEO</div>
+
+  <div style="display:flex; align-items:center; gap:24px; flex-wrap:wrap; justify-content:center; width:100%; max-width:800px;">
+    <div class="orbit-demo">
+      <div class="od-earth">🌍</div>
+      <div class="od-ring leo" onclick="showOrbitInfo('leo', event)" title="คลิกดูรายละเอียด LEO"></div>
+      <div class="od-ring meo" onclick="showOrbitInfo('meo', event)" title="คลิกดูรายละเอียด MEO"></div>
+      <div class="od-ring geo" onclick="showOrbitInfo('geo', event)" title="คลิกดูรายละเอียด GEO"></div>
+      <div class="od-sat leo">🛰</div>
+      <div class="od-sat meo">📡</div>
+      <div class="od-sat geo">🌐</div>
+      <div class="orbit-labels">
+        <div class="orbit-label leo" onclick="showOrbitInfo('leo', event)">LEO</div>
+        <div class="orbit-label meo" onclick="showOrbitInfo('meo', event)">MEO</div>
+        <div class="orbit-label geo" onclick="showOrbitInfo('geo', event)">GEO</div>
+      </div>
+    </div>
+    <div style="flex:1; min-width:200px; font-size:0.82rem; color:var(--text2);">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="display:inline-block;width:16px;height:2px;background:#66bb6a;"></span><strong style="color:#66bb6a;">LEO</strong> — วงโคจรต่ำ (200–2,000 km)</div>
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="display:inline-block;width:16px;height:2px;background:#ffa726;"></span><strong style="color:#ffa726;">MEO</strong> — วงโคจรปานกลาง (2,000–35,000 km)</div>
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="display:inline-block;width:16px;height:2px;background:#7986cb;"></span><strong style="color:#7986cb;">GEO</strong> — วงโคจรค้างฟ้า (35,786 km)</div>
+      <div style="margin-top:12px; padding:10px; background:var(--bg3); border-radius:10px; font-size:0.78rem; color:var(--text3);">💡 คลิกที่วงโคจรหรือชื่อเพื่อดูรายละเอียด</div>
+    </div>
+  </div>
+
+  <div style="width:100%; max-width:800px; overflow-x:auto; margin-top:8px;">
+    <table class="orbit-table">
+      <thead><tr><th>ประเภท</th><th>ความสูง</th><th>ตัวอย่าง</th><th>การใช้งาน</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge badge-green">LEO</span></td><td>200–2,000 km</td><td>ISS, Starlink, Hubble</td><td>อินเทอร์เน็ต, ถ่ายภาพ, วิจัย</td></tr>
+        <tr><td><span class="badge badge-orange">MEO</span></td><td>2,000–35,000 km</td><td>GPS, Galileo, GLONASS</td><td>ระบบนำทาง, ระบุตำแหน่ง</td></tr>
+        <tr><td><span class="badge badge-purple">GEO</span></td><td>35,786 km</td><td>Thaicom, GOES, Intelsat</td><td>โทรทัศน์, อุตุฯ, โทรคมนาคม</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="tip-box fade-in" style="max-width:800px;width:100%;margin-top:8px;">ดาวเทียมค้างฟ้าทุกดวงต้องอยู่ที่ความสูง 35,786 km เท่านั้น ถ้าสูงกว่าหรือต่ำกว่านี้จะโคจรเร็วหรือช้าเกินไป และไม่ค้างฟ้า!</div>
+</div>
+
+<!-- Orbit Popup -->
+<div class="orbit-popup" id="orbitPopup">
+  <span class="popup-close" onclick="document.getElementById('orbitPopup').classList.remove('show')">✕</span>
+  <div id="orbitPopupContent"></div>
+</div>
+
+<!-- ===== PAGE 4: HOW IT WORKS ===== -->
+<div class="slide" id="slide4">
+  <div class="page-title">ดาวเทียมทำงานอย่างไร?</div>
+  <div class="page-subtitle">กระบวนการส่ง-รับข้อมูลผ่านดาวเทียม 4 ขั้นตอน</div>
+
+  <div class="signal-demo fade-in">
+    <div class="signal-scene">
+      <div class="sig-ground">
+        <div class="antenna-icon">📡</div>
+        <div class="sig-label">สถานีภาคพื้น</div>
+      </div>
+      <div class="sig-sat" id="sigSat">🛰️</div>
+      <div class="sig-ground2">
+        <div class="antenna-icon">📻</div>
+        <div class="sig-label">ผู้รับปลายทาง</div>
+      </div>
+      <div class="sig-line sig-up" id="sigUp"></div>
+      <div class="sig-line sig-down" id="sigDown"></div>
+    </div>
+    <button class="play-btn" id="playBtn" onclick="toggleSignalAnim()">▶ เล่น Animation</button>
+  </div>
+
+  <div class="steps4">
+    <div class="step4-card fade-in">
+      <div class="step4-header">
+        <div class="step4-num s4n1">1</div>
+        <div class="step4-title">สถานีภาคพื้นส่ง Uplink</div>
+      </div>
+      <div class="step4-body">ส่งสัญญาณขึ้นไปยังดาวเทียมด้วยความถี่สูง ต้องแรงพอที่จะเดินทางไปถึง</div>
+      <div class="step4-tags"><span class="tag">C-band 4–8 GHz</span><span class="tag">Ku-band 12–18 GHz</span><span class="tag">Ka-band 26–40 GHz</span></div>
+    </div>
+    <div class="step4-card fade-in">
+      <div class="step4-header">
+        <div class="step4-num s4n2">2</div>
+        <div class="step4-title">ดาวเทียมรับ &amp; ประมวลผล</div>
+      </div>
+      <div class="step4-body">Transponder รับสัญญาณ แปลงความถี่เพื่อป้องกันสัญญาณชนกัน แล้วขยายสัญญาณด้วย Amplifier</div>
+      <div class="step4-tags"><span class="tag">Transponder</span><span class="tag">Frequency Conv.</span><span class="tag">Amplifier</span></div>
+    </div>
+    <div class="step4-card fade-in">
+      <div class="step4-header">
+        <div class="step4-num s4n3">3</div>
+        <div class="step4-title">ส่ง Downlink สู่พื้นโลก</div>
+      </div>
+      <div class="step4-body">ส่งสัญญาณลงมายังพื้นโลกใน Footprint ครอบคลุม สัญญาณอ่อนลงตามระยะทาง (Free Space Path Loss)</div>
+      <div class="step4-tags"><span class="tag">Footprint</span><span class="tag">Path Loss</span><span class="tag">จานทีวี/GPS</span></div>
+    </div>
+    <div class="step4-card fade-in">
+      <div class="step4-header">
+        <div class="step4-num s4n4">4</div>
+        <div class="step4-title">ระบบพลังงาน</div>
+      </div>
+      <div class="step4-body">โซลาร์เซลล์ผลิตไฟ 1–10 kW แบตเตอรี่สำรองตอนอยู่ในเงาโลก GEO ใช้งานเฉลี่ย 15 ปี</div>
+      <div class="step4-tags"><span class="tag">Solar Panel</span><span class="tag">Battery</span><span class="tag">อายุ 15 ปี (GEO)</span></div>
+    </div>
+  </div>
+  <div class="tip-box fade-in" style="max-width:800px;width:100%;margin-top:12px;">ดาวเทียม LEO เช่น Starlink อาจมีอายุใช้งานเพียง 5–7 ปี แต่สามารถส่งดาวเทียมดวงใหม่ขึ้นทดแทนได้ต่อเนื่อง</div>
+</div>
+
+<!-- ===== PAGE 5: COMPONENTS ===== -->
+<div class="slide" id="slide5">
+  <div class="page-title">ส่วนประกอบของดาวเทียม</div>
+  <div class="page-subtitle">ชิ้นส่วนสำคัญและหน้าที่ — คลิกที่จุดบนแผนภาพ</div>
+
+  <div class="sat-diagram-wrap">
+    <div class="sat-svg-container">
+      <svg width="240" height="220" viewBox="0 0 240 220" xmlns="http://www.w3.org/2000/svg">
+        <!-- Body -->
+        <rect x="80" y="75" width="80" height="70" rx="8" fill="#1a2a44" stroke="#4fc3f7" stroke-width="1.5"/>
+        <!-- Solar panels left -->
+        <rect x="10" y="85" width="65" height="20" rx="4" fill="#1565c0" stroke="#42a5f5" stroke-width="1.2"/>
+        <line x1="26" y1="85" x2="26" y2="105" stroke="#42a5f5" stroke-width="0.8" opacity="0.5"/>
+        <line x1="42" y1="85" x2="42" y2="105" stroke="#42a5f5" stroke-width="0.8" opacity="0.5"/>
+        <line x1="58" y1="85" x2="58" y2="105" stroke="#42a5f5" stroke-width="0.8" opacity="0.5"/>
+        <!-- Solar panels right -->
+        <rect x="165" y="85" width="65" height="20" rx="4" fill="#1565c0" stroke="#42a5f5" stroke-width="1.2"/>
+        <line x1="181" y1="85" x2="181" y2="105" stroke="#42a5f5" stroke-width="0.8" opacity="0.5"/>
+        <line x1="197" y1="85" x2="197" y2="105" stroke="#42a5f5" stroke-width="0.8" opacity="0.5"/>
+        <line x1="213" y1="85" x2="213" y2="105" stroke="#42a5f5" stroke-width="0.8" opacity="0.5"/>
+        <!-- Antenna dish -->
+        <ellipse cx="120" cy="60" rx="22" ry="12" fill="none" stroke="#7986cb" stroke-width="1.5"/>
+        <line x1="120" y1="60" x2="120" y2="75" stroke="#7986cb" stroke-width="1.5"/>
+        <ellipse cx="120" cy="60" rx="6" ry="3" fill="#7986cb" opacity="0.6"/>
+        <!-- Thruster -->
+        <rect x="105" y="145" width="30" height="15" rx="4" fill="#263238" stroke="#ffa726" stroke-width="1.2"/>
+        <polygon points="110,160 130,160 120,175" fill="#ff7043" opacity="0.7"/>
+        <!-- Payload/sensor -->
+        <rect x="92" y="80" width="56" height="28" rx="4" fill="#0d47a1" stroke="#4fc3f7" stroke-width="0.8" opacity="0.6"/>
+        <!-- Hotspots -->
+        <g class="hotspot" id="hs-solar" onclick="showComponent('solar')"><circle cx="42" cy="95" r="12" /><text x="42" y="100" text-anchor="middle" fill="#4fc3f7" font-size="10" font-family="sans-serif">☀</text></g>
+        <g class="hotspot" id="hs-antenna" onclick="showComponent('antenna')"><circle cx="120" cy="45" r="12" /><text x="120" y="50" text-anchor="middle" fill="#4fc3f7" font-size="10" font-family="sans-serif">📡</text></g>
+        <g class="hotspot" id="hs-transponder" onclick="showComponent('transponder')"><circle cx="155" cy="95" r="12" /><text x="155" y="100" text-anchor="middle" fill="#4fc3f7" font-size="10" font-family="sans-serif">📶</text></g>
+        <g class="hotspot" id="hs-battery" onclick="showComponent('battery')"><circle cx="85" cy="130" r="12" /><text x="85" y="135" text-anchor="middle" fill="#4fc3f7" font-size="10" font-family="sans-serif">🔋</text></g>
+        <g class="hotspot" id="hs-thruster" onclick="showComponent('thruster')"><circle cx="120" cy="165" r="12" /><text x="120" y="170" text-anchor="middle" fill="#4fc3f7" font-size="10" font-family="sans-serif">🔥</text></g>
+        <g class="hotspot" id="hs-payload" onclick="showComponent('payload')"><circle cx="155" cy="130" r="12" /><text x="155" y="135" text-anchor="middle" fill="#4fc3f7" font-size="10" font-family="sans-serif">🔬</text></g>
+      </svg>
+    </div>
+    <div class="comp-info-panel" id="compInfoPanel">
+      <h3>🛰️ ส่วนประกอบดาวเทียม</h3>
+      <p>คลิกที่จุดบนแผนภาพเพื่อดูรายละเอียดของแต่ละชิ้นส่วน</p>
+      <div class="comp-detail">ดาวเทียมแต่ละดวงประกอบด้วยชิ้นส่วนสำคัญที่ทำงานร่วมกันอย่างสอดประสาน ทั้งระบบพลังงาน การสื่อสาร และการควบคุมวงโคจร</div>
+    </div>
+  </div>
+
+  <div class="comp-chips">
+    <div class="comp-chip" onclick="showComponent('solar')">☀️ แผงโซลาร์เซลล์</div>
+    <div class="comp-chip" onclick="showComponent('antenna')">📡 เสาอากาศ</div>
+    <div class="comp-chip" onclick="showComponent('transponder')">📶 Transponder</div>
+    <div class="comp-chip" onclick="showComponent('battery')">🔋 แบตเตอรี่</div>
+    <div class="comp-chip" onclick="showComponent('thruster')">🔥 Thruster</div>
+    <div class="comp-chip" onclick="showComponent('payload')">🔬 Payload</div>
+    <div class="comp-chip" onclick="showComponent('thermal')">🌡️ ระบบควบคุมอุณหภูมิ</div>
+    <div class="comp-chip" onclick="showComponent('bus')">📦 ตัวเครื่อง/Bus</div>
+  </div>
+
+  <div class="tip-box fade-in" style="max-width:800px;width:100%;margin-top:12px;">ด้านที่หันเข้าหาดวงอาทิตย์ร้อนถึง +120°C แต่ด้านที่อยู่ในเงามืดเย็นถึง -270°C วิศวกรต้องออกแบบ Multi-Layer Insulation (MLI) เพื่อรักษาสมดุล</div>
+</div>
+
+<!-- ===== PAGE 6: APPLICATIONS ===== -->
+<div class="slide" id="slide6">
+  <div class="page-title">การใช้งานดาวเทียม</div>
+  <div class="page-subtitle">ดาวเทียมอยู่ในชีวิตประจำวันของเราโดยที่เราอาจไม่รู้ตัว — คลิกการ์ดเพื่อพลิก</div>
+
+  <div class="flip-grid">
+    <div class="flip-card" onclick="this.classList.toggle('flipped')">
+      <div class="flip-inner">
+        <div class="flip-front"><div class="flip-icon">🗺️</div><div class="flip-front-title">GPS & นำทาง</div><div class="flip-front-hint">คลิกเพื่อดูรายละเอียด</div></div>
+        <div class="flip-back"><div class="flip-back-title">🗺️ GPS & นำทาง</div><div class="flip-back-text">ต้องการสัญญาณ 4 ดวง ระบุตำแหน่ง 3 มิติ แม่นยำ ±3 เมตร GPS สหรัฐฯ มี 31 ดวงใน MEO</div></div>
+      </div>
+    </div>
+    <div class="flip-card" onclick="this.classList.toggle('flipped')">
+      <div class="flip-inner">
+        <div class="flip-front"><div class="flip-icon">📺</div><div class="flip-front-title">ทีวี & อินเทอร์เน็ต</div><div class="flip-front-hint">คลิกเพื่อดูรายละเอียด</div></div>
+        <div class="flip-back"><div class="flip-back-title">📺 ทีวี & อินเทอร์เน็ต</div><div class="flip-back-text">GEO ครอบคลุม 1/3 โลกด้วยดวงเดียว Starlink LEO ให้ 50–200 Mbps ในพื้นที่ห่างไกล</div></div>
+      </div>
+    </div>
+    <div class="flip-card" onclick="this.classList.toggle('flipped')">
+      <div class="flip-inner">
+        <div class="flip-front"><div class="flip-icon">🌩️</div><div class="flip-front-title">พยากรณ์อากาศ</div><div class="flip-front-hint">คลิกเพื่อดูรายละเอียด</div></div>
+        <div class="flip-back"><div class="flip-back-title">🌩️ พยากรณ์อากาศ</div><div class="flip-back-text">GOES ถ่ายภาพทุก 10 นาที ติดตามพายุไต้ฝุ่น พยากรณ์ล่วงหน้าได้ 7–14 วัน</div></div>
+      </div>
+    </div>
+    <div class="flip-card" onclick="this.classList.toggle('flipped')">
+      <div class="flip-inner">
+        <div class="flip-front"><div class="flip-icon">🌍</div><div class="flip-front-title">สำรวจโลก</div><div class="flip-front-hint">คลิกเพื่อดูรายละเอียด</div></div>
+        <div class="flip-back"><div class="flip-back-title">🌍 สำรวจโลก</div><div class="flip-back-text">ถ่ายภาพความละเอียดสูง ตรวจการตัดไม้ ติดตามน้ำแข็งละลาย ประเมินความเสียหายจากภัย</div></div>
+      </div>
+    </div>
+    <div class="flip-card" onclick="this.classList.toggle('flipped')">
+      <div class="flip-inner">
+        <div class="flip-front"><div class="flip-icon">🛡️</div><div class="flip-front-title">การทหาร</div><div class="flip-front-hint">คลิกเพื่อดูรายละเอียด</div></div>
+        <div class="flip-back"><div class="flip-back-title">🛡️ การทหาร</div><div class="flip-back-text">ถ่ายภาพข่าวกรอง สื่อสารทหารปลอดภัย ตรวจจับการยิงขีปนาวุธด้วย Infrared</div></div>
+      </div>
+    </div>
+    <div class="flip-card" onclick="this.classList.toggle('flipped')">
+      <div class="flip-inner">
+        <div class="flip-front"><div class="flip-icon">💰</div><div class="flip-front-title">การเงิน</div><div class="flip-front-hint">คลิกเพื่อดูรายละเอียด</div></div>
+        <div class="flip-back"><div class="flip-back-title">💰 การเงิน</div><div class="flip-back-text">ตลาดหุ้น sync เวลาระดับ nanosecond ธุรกรรมข้ามประเทศอาศัย GPS หาก GPS ล่มการเงินโลกพัง</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="max-width:800px;width:100%;margin-top:16px;">
+    <div class="section-title">🌍 ทุกครั้งที่คุณ...</div>
+    <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(160px,1fr)); gap:8px;">
+      <div class="card" style="padding:10px 14px; text-align:center; font-size:0.82rem;">📱 เปิด Google Maps<br><span style="color:var(--accent);font-size:0.75rem;">→ GPS ดาวเทียม MEO</span></div>
+      <div class="card" style="padding:10px 14px; text-align:center; font-size:0.82rem;">📺 ดูทีวีจานดาว<br><span style="color:var(--accent);font-size:0.75rem;">→ สัญญาณจาก GEO</span></div>
+      <div class="card" style="padding:10px 14px; text-align:center; font-size:0.82rem;">🌦️ เช็คอากาศ<br><span style="color:var(--accent);font-size:0.75rem;">→ ข้อมูลจาก GOES</span></div>
+      <div class="card" style="padding:10px 14px; text-align:center; font-size:0.82rem;">💳 รูดบัตร<br><span style="color:var(--accent);font-size:0.75rem;">→ Sync เวลา GPS</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PAGE 7: FAMOUS SATELLITES ===== -->
+<div class="slide" id="slide7">
+  <div class="page-title">ดาวเทียมไทยและโลก</div>
+  <div class="page-subtitle">Thaicom · Starlink · ISS · Hubble</div>
+
+  <div class="sat-cards-grid">
+    <div class="sat-world-card">
+      <div class="swc-header">
+        <div class="swc-icon">🇹🇭</div>
+        <div><div class="swc-title">Thaicom</div><div class="swc-subtitle">ดาวเทียมไทย</div></div>
+      </div>
+      <div class="swc-body">บริษัท ไทยคม จำกัด (มหาชน) ก่อตั้งปี พ.ศ. 2534 ดาวเทียมหลักไทย 3 ดวง:</div>
+      <table class="thaicom-table">
+        <thead><tr><th>ชื่อ</th><th>ปี</th><th>วงโคจร</th><th>บริการ</th></tr></thead>
+        <tbody>
+          <tr><td>Thaicom 4</td><td>2005</td><td>119.5°E</td><td>อินเทอร์เน็ต เอเชีย 45 Gbps</td></tr>
+          <tr><td>Thaicom 6</td><td>2014</td><td>78.5°E</td><td>ทีวี แอฟริกา/เอเชีย</td></tr>
+          <tr><td>Thaicom 8</td><td>2016</td><td>78.5°E</td><td>ทีวีดิจิทัล อาเซียน</td></tr>
+        </tbody>
+      </table>
+      <div class="swc-tags"><span class="badge badge-blue">GEO</span><span class="badge badge-green">GISTDA</span><span class="badge badge-purple">THEOS-2 (2023)</span></div>
+    </div>
+
+    <div class="sat-world-card">
+      <div class="swc-header">
+        <div class="swc-icon">🚀</div>
+        <div><div class="swc-title">Starlink</div><div class="swc-subtitle">SpaceX · Elon Musk</div></div>
+      </div>
+      <div class="swc-body">
+        <strong>6,000+ ดวง</strong> ในวงโคจร LEO (ณ ปี 2026)<br>
+        ให้บริการอินเทอร์เน็ต <strong>50–200 Mbps</strong> ทุกมุมโลก<br>
+        เปิดให้บริการในไทยแล้ว ราคา ~3,000 บาท/เดือน<br>
+        วางแผนขยายเป็น <strong>42,000 ดวง</strong> ในอนาคต
+      </div>
+      <div class="swc-tags"><span class="badge badge-green">LEO</span><span class="badge badge-blue">อินเทอร์เน็ต</span><span class="badge badge-orange">พื้นที่ห่างไกล</span></div>
+    </div>
+
+    <div class="sat-world-card">
+      <div class="swc-header">
+        <div class="swc-icon">🏗️</div>
+        <div><div class="swc-title">ISS</div><div class="swc-subtitle">สถานีอวกาศนานาชาติ</div></div>
+      </div>
+      <div class="swc-body">
+        ความสูงวงโคจร: <strong>408 km</strong> (LEO)<br>
+        โคจรรอบโลก 1 รอบใน <strong>92 นาที</strong><br>
+        นักบินอาศัยอยู่ตลอด 24 ชม. ตั้งแต่ปี 2000<br>
+        ยาว <strong>109 เมตร</strong> — กว้างกว่าสนามฟุตบอล<br>
+        ร่วมมือ NASA · Roscosmos · ESA · JAXA · CSA
+      </div>
+      <div class="swc-tags"><span class="badge badge-green">LEO 408 km</span><span class="badge badge-purple">ห้องทดลองอวกาศ</span></div>
+    </div>
+
+    <div class="sat-world-card">
+      <div class="swc-header">
+        <div class="swc-icon">🔭</div>
+        <div><div class="swc-title">Hubble Space Telescope</div><div class="swc-subtitle">กล้องโทรทรรศน์อวกาศ</div></div>
+      </div>
+      <div class="swc-body">
+        ส่งขึ้นวงโคจรปี 1990 สูง <strong>547 km</strong><br>
+        ส่งภาพอวกาศกลับมา <strong>1.5 ล้านภาพ</strong> ใน 30 ปี<br>
+        ช่วยค้นพบอายุจักรวาล <strong>~13.8 พันล้านปี</strong><br>
+        ไม่มีชั้นบรรยากาศรบกวน ภาพคมชัดกว่ากล้องพื้นดิน
+      </div>
+      <div class="swc-tags"><span class="badge badge-green">LEO 547 km</span><span class="badge badge-blue">NASA/ESA</span><span class="badge badge-purple">วิทยาศาสตร์</span></div>
+    </div>
+  </div>
+
+  <div class="tip-box fade-in" style="max-width:800px;width:100%;margin-top:12px;">ดาวเทียมไทยล่าสุดคือ <strong>THEOS-2</strong> ดาวเทียมสำรวจโลกของ GISTDA ส่งขึ้นสู่วงโคจรปี 2023 ความละเอียด 50 เซนติเมตร</div>
+</div>
+
+<!-- ===== PAGE 8: QUIZ ===== -->
+<div class="slide" id="slide8">
+  <div class="page-title">แบบทดสอบความเข้าใจ</div>
+  <div class="page-subtitle">5 ข้อ · เลือกคำตอบที่ถูกต้องที่สุด</div>
+
+  <div class="quiz-wrap" id="quizWrap">
+    <div class="quiz-progress"><div class="quiz-bar" id="quizBar" style="width:0%"></div></div>
+    <div id="quizContent"></div>
+  </div>
+</div>
+
+</div><!-- end #app -->
+
+<!-- NAV -->
+<div id="navbar">
+  <button class="nav-btn" id="prevBtn" onclick="changePage(-1)" disabled>← ก่อนหน้า</button>
+  <div class="page-dots" id="pageDots"></div>
+  <span id="pageIndicator">1 / 8</span>
+  <button class="nav-btn" id="nextBtn" onclick="changePage(1)">ถัดไป →</button>
+</div>
+
+<script>
+// ==============================
+// STARS CANVAS
+// ==============================
+const canvas = document.getElementById('starCanvas');
+const ctx = canvas.getContext('2d');
+let stars = [];
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  generateStars();
+}
+
+function generateStars() {
+  stars = [];
+  const count = Math.floor((canvas.width * canvas.height) / 3000);
+  for (let i = 0; i < count; i++) {
+    stars.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      r: Math.random() * 1.5 + 0.3,
+      opacity: Math.random(),
+      speed: Math.random() * 0.008 + 0.002,
+      phase: Math.random() * Math.PI * 2
+    });
+  }
+}
+
+function animateStars() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const t = Date.now() * 0.001;
+  stars.forEach(s => {
+    const o = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(t * s.speed * 100 + s.phase));
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(200,220,255,${o})`;
+    ctx.fill();
+  });
+  requestAnimationFrame(animateStars);
+}
+
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+animateStars();
+
+// ==============================
+// PAGE NAVIGATION
+// ==============================
+let currentPage = 1;
+const totalPages = 8;
+
+function buildDots() {
+  const dots = document.getElementById('pageDots');
+  dots.innerHTML = '';
+  for (let i = 1; i <= totalPages; i++) {
+    const d = document.createElement('div');
+    d.className = 'page-dot' + (i === 1 ? ' active' : '');
+    d.onclick = () => goToPage(i);
+    dots.appendChild(d);
+  }
+}
+
+function updateNav() {
+  document.getElementById('prevBtn').disabled = currentPage === 1;
+  document.getElementById('nextBtn').disabled = currentPage === totalPages;
+  document.getElementById('pageIndicator').textContent = `${currentPage} / ${totalPages}`;
+  document.querySelectorAll('.page-dot').forEach((d, i) => {
+    d.classList.toggle('active', i + 1 === currentPage);
+  });
+}
+
+function goToPage(n) {
+  if (n < 1 || n > totalPages || n === currentPage) return;
+  const prev = document.getElementById(`slide${currentPage}`);
+  const next = document.getElementById(`slide${n}`);
+  const dir = n > currentPage ? 1 : -1;
+  prev.classList.remove('active');
+  prev.style.transform = `translateX(${dir * -60}px)`;
+  prev.style.opacity = '0';
+  prev.style.pointerEvents = 'none';
+  setTimeout(() => {
+    prev.style.transform = '';
+    prev.style.opacity = '';
+  }, 500);
+  next.style.transform = `translateX(${dir * 60}px)`;
+  next.style.opacity = '0';
+  next.classList.add('active');
+  requestAnimationFrame(() => {
+    next.style.transform = 'translateX(0)';
+    next.style.opacity = '1';
+  });
+  currentPage = n;
+  updateNav();
+  setTimeout(() => triggerFadeIns(next), 100);
+  if (n === 2) triggerTimeline();
+  if (n === 7) triggerSatCards();
+  if (n === 8 && !quizStarted) { quizStarted = true; initQuiz(); }
+}
+
+function changePage(dir) {
+  goToPage(currentPage + dir);
+}
+
+function triggerFadeIns(container) {
+  const items = container.querySelectorAll('.fade-in');
+  items.forEach((el, i) => {
+    setTimeout(() => el.classList.add('visible'), i * 80);
+  });
+}
+
+buildDots();
+updateNav();
+triggerFadeIns(document.getElementById('slide1'));
+
+// ==============================
+// TIMELINE ANIMATION
+// ==============================
+function triggerTimeline() {
+  const items = document.querySelectorAll('#slide2 .tl-item');
+  items.forEach((el, i) => {
+    setTimeout(() => el.classList.add('visible'), i * 150);
+  });
+  triggerFadeIns(document.getElementById('slide2'));
+}
+
+// ==============================
+// ORBIT POPUP
+// ==============================
+const orbitData = {
+  leo: {
+    name: 'LEO — Low Earth Orbit',
+    color: '#66bb6a',
+    icon: '🛰',
+    lines: [
+      { label: 'ความสูง', val: '200 – 2,000 km' },
+      { label: 'คาบโคจร', val: '90 – 120 นาที' },
+      { label: 'ดีเลย์สัญญาณ', val: '20–40 ms (ต่ำมาก)' },
+      { label: 'จำนวน', val: 'ต้องหลายร้อยดวง' },
+      { label: 'ตัวอย่าง', val: 'ISS, Starlink, Hubble' },
+    ]
+  },
+  meo: {
+    name: 'MEO — Medium Earth Orbit',
+    color: '#ffa726',
+    icon: '📡',
+    lines: [
+      { label: 'ความสูง', val: '2,000 – 35,000 km' },
+      { label: 'คาบโคจร', val: '2 – 24 ชั่วโมง' },
+      { label: 'ครอบคลุม', val: 'กว้างมาก เหมาะ GPS' },
+      { label: 'ตัวอย่าง', val: 'GPS, Galileo, GLONASS, BeiDou' },
+    ]
+  },
+  geo: {
+    name: 'GEO — Geostationary Orbit',
+    color: '#7986cb',
+    icon: '🌐',
+    lines: [
+      { label: 'ความสูง', val: '35,786 km (แน่นอน)' },
+      { label: 'คาบโคจร', val: '24 ชั่วโมง (เท่าโลกหมุน)' },
+      { label: 'ดีเลย์สัญญาณ', val: '~240 ms (สูง)' },
+      { label: 'ครอบคลุม', val: '1 ดวง ครอบ 1/3 โลก' },
+      { label: 'ตัวอย่าง', val: 'Thaicom, GOES, Intelsat' },
+    ]
+  }
+};
+
+function showOrbitInfo(type, event) {
+  event && event.stopPropagation();
+  const d = orbitData[type];
+  const popup = document.getElementById('orbitPopup');
+  const content = document.getElementById('orbitPopupContent');
+  content.innerHTML = `
+    <div style="font-size:1.6rem;margin-bottom:6px;">${d.icon}</div>
+    <div style="font-size:1rem;font-weight:800;color:${d.color};margin-bottom:12px;">${d.name}</div>
+    ${d.lines.map(l => `
+      <div style="display:flex;gap:8px;margin-bottom:7px;font-size:0.85rem;">
+        <span style="color:var(--text3);min-width:100px;">${l.label}:</span>
+        <span style="color:var(--text);font-weight:600;">${l.val}</span>
+      </div>
+    `).join('')}
+  `;
+  popup.classList.add('show');
+}
+
+document.addEventListener('click', (e) => {
+  const popup = document.getElementById('orbitPopup');
+  if (!popup.contains(e.target) && !e.target.closest('.od-ring') && !e.target.closest('.orbit-label')) {
+    popup.classList.remove('show');
+  }
+});
+
+// ==============================
+// SIGNAL ANIMATION
+// ==============================
+let signalPlaying = false;
+
+function toggleSignalAnim() {
+  signalPlaying = !signalPlaying;
+  const btn = document.getElementById('playBtn');
+  const up = document.getElementById('sigUp');
+  const down = document.getElementById('sigDown');
+  if (signalPlaying) {
+    btn.textContent = '⏸ หยุด';
+    up.classList.add('playing');
+    down.classList.add('playing');
+  } else {
+    btn.textContent = '▶ เล่น Animation';
+    up.classList.remove('playing');
+    down.classList.remove('playing');
+  }
+}
+
+// ==============================
+// COMPONENT INFO
+// ==============================
+const compData = {
+  solar: {
+    name: '☀️ แผงโซลาร์เซลล์ (Solar Panel)',
+    desc: 'ผลิตไฟฟ้าจากแสงอาทิตย์ในอวกาศ กำลังไฟ 1–10 kW กางออกเมื่ออยู่ในวงโคจร เป็นแหล่งพลังงานหลักของดาวเทียม',
+    detail: 'ประสิทธิภาพสูงกว่าโซลาร์บนพื้นโลก เพราะไม่มีชั้นบรรยากาศกรองแสง'
+  },
+  antenna: {
+    name: '📡 เสาอากาศ (Antenna)',
+    desc: 'ส่ง-รับสัญญาณกับพื้นโลก มีหลายประเภท: Dish Antenna, Phased Array, Omnidirectional',
+    detail: 'ขนาดและรูปทรงแตกต่างกันตามความถี่และพื้นที่ครอบคลุม (Footprint)'
+  },
+  transponder: {
+    name: '📶 Transponder',
+    desc: 'หัวใจสำคัญของดาวเทียมสื่อสาร รับสัญญาณ Uplink, แปลงความถี่, ขยายสัญญาณ แล้วส่ง Downlink',
+    detail: 'ดาวเทียม GEO 1 ดวงอาจมี Transponder 24–72 ตัว'
+  },
+  battery: {
+    name: '🔋 แบตเตอรี่ (Battery)',
+    desc: 'สำรองพลังงานในช่วงที่ดาวเทียมอยู่ในเงาของโลก ซึ่งอาจเกิดขึ้นได้หลายครั้งต่อวัน',
+    detail: 'ใช้แบตเตอรี่ Nickel-Hydrogen หรือ Lithium-Ion ที่ทนทานในอวกาศ'
+  },
+  thruster: {
+    name: '🔥 เครื่องขับดัน (Thruster)',
+    desc: 'ปรับและรักษาวงโคจร ใช้เชื้อเพลิงเคมี (Bipropellant) หรือ Ion Thruster ที่ประหยัดกว่า',
+    detail: 'เมื่อเชื้อเพลิงหมด ดาวเทียมไม่สามารถปรับวงโคจรได้ จะถูก Deorbit เผาในบรรยากาศ'
+  },
+  payload: {
+    name: '🔬 Payload (อุปกรณ์ภารกิจ)',
+    desc: 'ทำหน้าที่ตามภารกิจหลักของดาวเทียม เช่น กล้องถ่ายภาพ, Sensor, Transponder สื่อสาร',
+    detail: 'คิดเป็นสัดส่วนเล็กของน้ำหนักรวม ส่วนใหญ่เป็นระบบ Bus ที่ support payload'
+  },
+  thermal: {
+    name: '🌡️ ระบบควบคุมอุณหภูมิ',
+    desc: 'รักษาอุณหภูมิให้อยู่ในช่วงที่อุปกรณ์ทำงานได้ ใช้ฉนวน MLI และ Radiator Panel สีขาว',
+    detail: 'ด้านแดด +120°C ด้านเงา -270°C ต้องสมดุลทั้งสองด้านตลอดเวลา'
+  },
+  bus: {
+    name: '📦 ตัวเครื่อง / Bus',
+    desc: 'โครงสร้างหลักที่บรรจุและป้องกันอุปกรณ์ภายใน ทนทาน น้ำหนักเบา ป้องกันรังสีในอวกาศ',
+    detail: 'ทำจากโลหะผสมอลูมิเนียม/ไทเทเนียม และวัสดุ Composite น้ำหนักเบา'
+  }
+};
+
+function showComponent(id) {
+  const d = compData[id];
+  if (!d) return;
+  const panel = document.getElementById('compInfoPanel');
+  panel.innerHTML = `<h3>${d.name}</h3><p>${d.desc}</p><div class="comp-detail">${d.detail}</div>`;
+  document.querySelectorAll('.comp-chip').forEach(c => c.classList.remove('active'));
+  document.querySelectorAll('.hotspot').forEach(h => h.classList.remove('active'));
+  event && event.target && event.target.closest('.comp-chip') && event.target.closest('.comp-chip').classList.add('active');
+  const hs = document.getElementById(`hs-${id}`);
+  if (hs) hs.classList.add('active');
+}
+
+// ==============================
+// SAT CARDS ANIMATION
+// ==============================
+function triggerSatCards() {
+  const cards = document.querySelectorAll('#slide7 .sat-world-card');
+  cards.forEach((c, i) => {
+    setTimeout(() => c.classList.add('visible'), i * 150 + 100);
+  });
+  triggerFadeIns(document.getElementById('slide7'));
+}
+
+// ==============================
+// QUIZ
+// ==============================
+const quizData = [
+  {
+    q: 'ดาวเทียมดวงแรกของโลกที่มนุษย์ส่งขึ้นสู่อวกาศชื่ออะไร?',
+    opts: ['A) Apollo 11', 'B) Sputnik 1', 'C) Thaicom 4', 'D) Hubble'],
+    correct: 1,
+    explain: 'B) Sputnik 1 — ส่งขึ้นโดยสหภาพโซเวียต เมื่อ 4 ตุลาคม ค.ศ. 1957 ถือเป็นจุดเริ่มต้นของยุคอวกาศ'
+  },
+  {
+    q: 'วงโคจร GEO อยู่สูงจากพื้นโลกกี่กิโลเมตร?',
+    opts: ['A) 500 km', 'B) 2,000 km', 'C) 35,786 km', 'D) 100,000 km'],
+    correct: 2,
+    explain: 'C) 35,786 km — ที่ความสูงนี้ดาวเทียมโคจรพร้อมกับการหมุนของโลกพอดี จึงดูเหมือนนิ่งอยู่กับที่'
+  },
+  {
+    q: 'GPS ต้องรับสัญญาณจากดาวเทียมอย่างน้อยกี่ดวงเพื่อระบุตำแหน่ง 3 มิติ?',
+    opts: ['A) 1 ดวง', 'B) 2 ดวง', 'C) 3 ดวง', 'D) 4 ดวง'],
+    correct: 3,
+    explain: 'D) 4 ดวง — ใช้หลักการ Trilateration ต้องการ 4 ดวงสำหรับค่า X, Y, Z และการชดเชยเวลา (Clock Bias)'
+  },
+  {
+    q: 'ดาวเทียมได้รับพลังงานหลักจากแหล่งใด?',
+    opts: ['A) แบตเตอรี่ AA', 'B) เชื้อเพลิงนิวเคลียร์', 'C) แผงโซลาร์เซลล์', 'D) พลังงานลม'],
+    correct: 2,
+    explain: 'C) แผงโซลาร์เซลล์ — แปลงแสงอาทิตย์เป็นไฟฟ้า แบตเตอรี่ใช้เฉพาะสำรองเมื่อดาวเทียมอยู่ในเงาโลก'
+  },
+  {
+    q: 'Starlink เป็นโครงการดาวเทียมของบริษัทใด?',
+    opts: ['A) NASA', 'B) Thaicom', 'C) Apple', 'D) SpaceX'],
+    correct: 3,
+    explain: 'D) SpaceX — บริษัทของ Elon Musk มีแผนส่งดาวเทียมถึง 42,000 ดวง ให้อินเทอร์เน็ตทั่วโลก'
+  }
+];
+
+let quizState = { q: 0, score: 0, answered: false };
+let quizStarted = false;
+
+function initQuiz() {
+  quizState = { q: 0, score: 0, answered: false };
+  renderQuestion();
+}
+
+function renderQuestion() {
+  const data = quizData[quizState.q];
+  const bar = document.getElementById('quizBar');
+  bar.style.width = `${(quizState.q / quizData.length) * 100}%`;
+  const letters = ['A', 'B', 'C', 'D'];
+  document.getElementById('quizContent').innerHTML = `
+    <div class="quiz-q-num">ข้อ ${quizState.q + 1} จาก ${quizData.length}</div>
+    <div class="quiz-q-text">${data.q}</div>
+    <div class="quiz-options">
+      ${data.opts.map((opt, i) => `
+        <button class="quiz-opt" onclick="selectAnswer(${i})" id="opt-${i}">
+          <span class="quiz-opt-letter">${letters[i]}</span>
+          ${opt.replace(/^[A-D]\) /, '')}
+        </button>
+      `).join('')}
+    </div>
+    <div class="quiz-explain" id="quizExplain">${data.explain}</div>
+    <button class="quiz-next-btn" id="quizNextBtn" onclick="nextQuestion()">
+      ${quizState.q < quizData.length - 1 ? 'ข้อถัดไป →' : 'ดูผลลัพธ์ 🎉'}
+    </button>
+  `;
+  quizState.answered = false;
+}
+
+function selectAnswer(idx) {
+  if (quizState.answered) return;
+  quizState.answered = true;
+  const correct = quizData[quizState.q].correct;
+  const opts = document.querySelectorAll('.quiz-opt');
+  opts.forEach((btn, i) => {
+    btn.disabled = true;
+    if (i === correct) btn.classList.add('correct');
+    else if (i === idx && i !== correct) btn.classList.add('wrong');
+  });
+  if (idx === correct) quizState.score++;
+  document.getElementById('quizExplain').classList.add('show');
+  document.getElementById('quizNextBtn').classList.add('show');
+  document.getElementById('quizBar').style.width = `${((quizState.q + 1) / quizData.length) * 100}%`;
+}
+
+function nextQuestion() {
+  quizState.q++;
+  if (quizState.q >= quizData.length) showResult();
+  else renderQuestion();
+}
+
+function showResult() {
+  const score = quizState.score;
+  const total = quizData.length;
+  let stars = '★★★★★'.slice(0, Math.round(score / total * 5)).padEnd(5, '☆');
+  let level, desc, levelColor;
+  if (score === 5) { level = 'ยอดเยี่ยม! 🏆'; desc = 'คุณคือผู้เชี่ยวชาญระบบดาวเทียม!'; levelColor = 'var(--yellow)'; }
+  else if (score >= 3) { level = 'เก่งมาก! 👏'; desc = 'ทบทวนบางส่วนและคุณจะเชี่ยวชาญขึ้น'; levelColor = 'var(--green)'; }
+  else { level = 'ต้องเรียนเพิ่ม 📚'; desc = 'ลองอ่านเนื้อหาอีกครั้งแล้วทำแบบทดสอบใหม่'; levelColor = 'var(--orange)'; }
+
+  document.getElementById('quizBar').style.width = '100%';
+  document.getElementById('quizContent').innerHTML = `
+    <div class="quiz-result">
+      <div class="result-score">${score}/${total}</div>
+      <div class="result-label" style="color:${levelColor};">${level}</div>
+      <div class="result-stars">${stars}</div>
+      <div class="result-desc">${desc}</div>
+      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+        <button class="retry-btn" onclick="initQuiz()">🔄 ทำใหม่</button>
+        <button class="retry-btn" onclick="goToPage(2)">📖 อ่านเนื้อหาอีกครั้ง</button>
+      </div>
+    </div>
+  `;
+}
+
+// Keyboard navigation
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') changePage(1);
+  else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') changePage(-1);
+});
+</script>
+</body>
+</html>
