@@ -144,23 +144,30 @@ def is_newer(current: str, latest: str) -> bool:
 _ETAG_PATH = Path.home() / ".happy" / "updater_etag.json"
 
 
-def _load_etag() -> str:
-    """Return cached ETag for the /releases/latest endpoint, or ""."""
+def _load_etag_cache() -> dict:
+    """Return cached {"etag": ..., "data": <release-json>} for the
+    /releases/latest endpoint, or {} if missing/corrupt."""
     try:
         if _ETAG_PATH.exists():
             data = json.loads(_ETAG_PATH.read_text(encoding="utf-8"))
-            return str(data.get("etag", "")) if isinstance(data, dict) else ""
+            return data if isinstance(data, dict) else {}
     except Exception:
         pass
-    return ""
+    return {}
 
 
-def _save_etag(etag: str) -> None:
-    """Persist the ETag so the next check can send If-None-Match."""
+def _save_etag_cache(etag: str, release_data: dict) -> None:
+    """Persist ETag + the release JSON itself. We need the data too
+    because a 304 response carries NO body — caller can't re-derive
+    download_url/version/size from headers alone. Without the cached
+    body we'd be stuck returning None on every 304, which hides the
+    available update from clients that are still behind."""
     try:
         _ETAG_PATH.parent.mkdir(parents=True, exist_ok=True)
         _ETAG_PATH.write_text(
-            json.dumps({"etag": etag}), encoding="utf-8"
+            json.dumps({"etag": etag, "data": release_data},
+                       ensure_ascii=False),
+            encoding="utf-8",
         )
     except Exception:
         pass
@@ -170,14 +177,30 @@ def _fetch_latest_release(timeout: float) -> Optional[dict]:
     """Fetch /releases/latest with ETag-conditional GET.
 
     Sends If-None-Match: <cached-etag>. GitHub returns 304 Not Modified
-    when nothing has changed — we skip JSON parsing and reuse the
-    "no update" path. This shaves ~5-10 KB per hourly poll and (more
-    importantly) costs ZERO against the 60 req/hr unauthed rate limit
-    when the response is 304 — only authed token bumps that to 5 000/hr.
+    when nothing has changed — we return the CACHED release JSON so the
+    caller can still run is_newer() against the client's current version.
+
+    **This is the v2.4.1 fix for a critical v2.4.0 bug**: previously we
+    treated 304 as "no update available" and returned None. But 304 only
+    means "the GitHub resource hasn't changed since you last fetched
+    it" — NOT "the client is on the latest version". A v2.3.5 client
+    that polled once, got an ETag for the v2.4.0 release, then hit a
+    network blip would receive 304 on every subsequent poll for hours
+    or days and never be offered the update it actually needs. Caching
+    the full release JSON lets the 304 path still run the version
+    comparison against fresh client state.
+
+    Bandwidth savings: 304 returns ~200 bytes of headers vs the ~5-10 KB
+    JSON body of a 200 response. Rate-limit cost: 304 still counts as 1
+    request against the 5000/hr authed quota — same as a 200 — so the
+    primary benefit is bandwidth, not quota relief. Kept anyway because
+    a kilobyte saved is a kilobyte saved.
     """
     url = f"{GITHUB_API}/repos/{REPO}/releases/latest"
     headers = _auth_headers()
-    cached_etag = _load_etag()
+    cache = _load_etag_cache()
+    cached_etag = str(cache.get("etag", ""))
+    cached_data = cache.get("data") if isinstance(cache.get("data"), dict) else None
     if cached_etag:
         headers["If-None-Match"] = cached_etag
     req = urllib.request.Request(url, headers=headers)
@@ -186,16 +209,32 @@ def _fetch_latest_release(timeout: float) -> Optional[dict]:
             if resp.status != 200:
                 _debug_log(f"_fetch_latest_release: HTTP {resp.status}")
                 return None
-            # Cache new ETag for next call (may be missing on some
-            # GitHub mirrors — that's fine, we'd just full-fetch).
+            data = json.loads(resp.read().decode("utf-8"))
+            # Cache new ETag + body for next call. Skip the write if
+            # ETag is identical to what we already have (shouldn't
+            # happen on 200, but defend against weird GitHub behaviour).
             new_etag = resp.headers.get("ETag", "")
             if new_etag and new_etag != cached_etag:
-                _save_etag(new_etag)
-            return json.loads(resp.read().decode("utf-8"))
+                _save_etag_cache(new_etag, data)
+            return data
     except urllib.error.HTTPError as e:
-        # 304 Not Modified = no new release; quiet success.
         if e.code == 304:
-            _debug_log("_fetch_latest_release: 304 not modified (cached)")
+            # GitHub data hasn't changed since our cached fetch.
+            # Return the CACHED body so check_for_update can still
+            # compare it against the current client version. If we
+            # have no cached data (cache corrupt or first 304 ever
+            # somehow), fall through to None — caller treats it as
+            # "no update info available right now" and retries in
+            # an hour.
+            if cached_data:
+                _debug_log(
+                    "_fetch_latest_release: 304 — returning cached release "
+                    f"(tag={cached_data.get('tag_name', '?')})"
+                )
+                return cached_data
+            _debug_log(
+                "_fetch_latest_release: 304 but no cached body — treat as None"
+            )
             return None
         _debug_log(f"_fetch_latest_release: HTTPError {e.code}")
         return None
