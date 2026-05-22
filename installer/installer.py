@@ -505,6 +505,8 @@ exit
         icon cache" / ENA Desktop v2.6.3 pattern.)
 
         Returns the versioned path, or the original if copy fails.
+        Also cleans up older `happy_logo_v*.ico` siblings so the
+        install dir doesn't accumulate dead icons across releases.
         """
         import shutil
         safe_ver = APP_VERSION.replace(".", "_")
@@ -524,6 +526,21 @@ exit
                 shutil.copy2(original, versioned)
             except OSError:
                 return original
+
+        # Housekeeping: delete stale `happy_logo_v*.ico` from earlier
+        # versions. Keeping them doesn't break anything but adds dead
+        # weight after every release.
+        try:
+            for stale in assets_dir.glob("happy_logo_v*.ico"):
+                if stale.name == versioned.name:
+                    continue
+                try:
+                    stale.unlink()
+                except OSError:
+                    pass
+        except Exception:
+            pass
+
         return versioned
 
     def _create_shortcut(self, target: Path, link: Path) -> None:
