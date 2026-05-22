@@ -7,10 +7,14 @@ auth.py — Gemini API key authentication (AI Studio)
 ความปลอดภัย:
   - API key save ที่ ~/.happy/auth.json (เฉพาะ user ปัจจุบัน)
   - File permission ตาม OS default (Windows: user-only readable)
+  - Atomic write (tempfile + os.replace) — crash ระหว่าง save จะไม่
+    ทิ้ง half-written auth.json ที่ทำให้ load_api_key คืน None และ
+    user ต้อง re-enter key
 """
 import json
 import os
 import stat
+import tempfile
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -24,11 +28,32 @@ CONFIG_FILE = CONFIG_DIR / "auth.json"
 # ─────────────── Config (save/load API key) ───────────────
 
 def save_api_key(api_key: str) -> Tuple[bool, str]:
-    """Save API key to ~/.happy/auth.json (user-only readable on POSIX)"""
+    """Save API key to ~/.happy/auth.json (user-only readable on POSIX).
+
+    Atomic write so a crash/power-loss mid-write either leaves the
+    OLD auth.json intact OR swaps in the new one — never half-written.
+    """
     try:
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        data = {"api_key": api_key.strip()}
-        CONFIG_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        payload = json.dumps({"api_key": api_key.strip()}, indent=2)
+        fd, tmp_path = tempfile.mkstemp(
+            prefix=".auth.json.", suffix=".tmp", dir=str(CONFIG_DIR),
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(payload)
+                f.flush()
+                try:
+                    os.fsync(f.fileno())
+                except OSError:
+                    pass
+            os.replace(tmp_path, CONFIG_FILE)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
         # POSIX: chmod 600 (user-only). On Windows ACL = current user only by default.
         try:
             os.chmod(CONFIG_FILE, stat.S_IRUSR | stat.S_IWUSR)

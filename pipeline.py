@@ -250,43 +250,62 @@ def _gen_config():
 class _TPMTracker:
     """Adaptive throttling — rolling 60s window of tokens used.
     ก่อนทุก call เช็คว่า TPM ใกล้ ceiling หรือยัง — ถ้าใกล้ก็ sleep รอ window เลื่อน
-    เพื่อกัน 429 (TPM hit)"""
+    เพื่อกัน 429 (TPM hit).
+
+    Thread-safety: pipeline worker thread calls `record` after each Gemini
+    response; Running page (Tk main thread) calls `current_tpm` every
+    500 ms for the live bar. Without a lock, the main-thread `for _, n
+    in self._events` generator can hit "list changed size during
+    iteration" if the worker happens to append at exactly the wrong tick.
+    A short lock on every mutation + every read fixes it; contention is
+    negligible (calls are ~10s apart).
+    """
+    import threading as _threading
     # Free tier of gemini-3.1-flash-lite-preview: TPM = 250,000 combined (input + output)
     TPM_CEILING = 250_000
     SAFETY_THRESHOLD = 0.85  # ถ้า usage ใน 60s > 85% ของ ceiling → sleep
 
     def __init__(self):
         self._events = []  # list[tuple(ts, total_tokens)]
+        self._lock = self._threading.Lock()
 
-    def _prune(self):
+    def _prune_locked(self):
+        """Caller must hold self._lock."""
         now = time.time()
         self._events = [(t, n) for t, n in self._events if now - t < 60.0]
 
     def record(self, input_tokens: int, output_tokens: int):
         """เรียกหลัง response — บันทึก tokens ที่เพิ่งใช้"""
-        self._prune()
-        self._events.append((time.time(), int(input_tokens or 0) + int(output_tokens or 0)))
+        with self._lock:
+            self._prune_locked()
+            self._events.append(
+                (time.time(),
+                 int(input_tokens or 0) + int(output_tokens or 0))
+            )
 
     def current_tpm(self) -> int:
-        self._prune()
-        return sum(n for _, n in self._events)
+        with self._lock:
+            self._prune_locked()
+            return sum(n for _, n in self._events)
 
     def wait_if_needed(self, projected_input: int = 0, sleep_fn=time.sleep) -> int:
         """ก่อน call: ถ้าเพิ่ม projected_input จะเกิน safety threshold → sleep จน window เลื่อนพอ
         คืน seconds ที่ sleep ไป (สำหรับ logging)"""
-        self._prune()
-        current = sum(n for _, n in self._events)
+        with self._lock:
+            self._prune_locked()
+            current = sum(n for _, n in self._events)
+            oldest_ts = self._events[0][0] if self._events else None
         # ถ้า current + projected ยังต่ำกว่า safety, ผ่าน
         if current + projected_input < int(self.TPM_CEILING * self.SAFETY_THRESHOLD):
             return 0
         # ต้องรอ — sleep จนกว่า oldest event จะ "หลุดจาก 60s window"
-        if not self._events:
+        if oldest_ts is None:
             return 0
-        oldest_ts = self._events[0][0]
         wait_s = 60.0 - (time.time() - oldest_ts) + 0.5  # +0.5 buffer
         if wait_s > 0:
             sleep_fn(min(wait_s, 60.0))
-            self._prune()
+            with self._lock:
+                self._prune_locked()
             return int(wait_s)
         return 0
 

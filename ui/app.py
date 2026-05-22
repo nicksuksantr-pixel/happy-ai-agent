@@ -342,6 +342,15 @@ class HappyApp(ctk.CTk):
             ):
                 # User changed their mind — bring window back so they
                 # can see the running pipeline + stop it cleanly.
+                #
+                # CRITICAL: reset `_really_quit` to False here. The
+                # tray-failure fallback in `_on_user_close` flips it to
+                # True *before* calling us; if we leave it set, the
+                # next X-button press would silently destroy without
+                # the warning dialog — i.e. lose work after the user
+                # explicitly said "don't quit". Same applies to the
+                # tray-Quit menu re-click after a reject.
+                self._really_quit = False
                 try:
                     self.deiconify()
                     self.lift()
