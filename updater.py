@@ -32,14 +32,24 @@ from typing import Callable, Optional
 
 # Default — change here or via env var at release time
 REPO = os.environ.get("HAPPY_AI_UPDATE_REPO", "nicksuksantr-pixel/happy-ai-agent")
-# Read-only PAT for private repos. Stored in `.env` baked into the build
-# at PyInstaller time (see installer/HAPPY.spec datas). Empty when the
-# repo is public — GitHub API works unauthenticated for public releases.
-UPDATE_TOKEN = os.environ.get("HAPPY_AI_UPDATE_TOKEN", "").strip()
 # Distribution is a ZIP (folder-mode installer wrapped) — updater will need to
 # extract before running. Asset name matches releases asset.
 INSTALLER_ASSET_NAME = "HappyAIAgent-Setup.zip"
 GITHUB_API = "https://api.github.com"
+
+
+def _get_token() -> str:
+    """Lazy-read the PAT every call so we pick up .env values that may
+    have been loaded AFTER this module was imported. (core.config loads
+    .env on import, but app.py imports updater BEFORE core.config — see
+    feedback note in v2.3.3 changelog.)"""
+    return os.environ.get("HAPPY_AI_UPDATE_TOKEN", "").strip()
+
+
+# Kept for back-compat reads (Settings page "Check for updates" reads
+# this to log "token configured: True/False"). Don't rely on it at
+# request time — use _get_token() inside the request path.
+UPDATE_TOKEN = _get_token()
 
 
 def _auth_headers(accept: str = "application/vnd.github+json") -> dict:
@@ -50,8 +60,9 @@ def _auth_headers(accept: str = "application/vnd.github+json") -> dict:
         "User-Agent": "HappyAIAgent-Updater",
         "X-GitHub-Api-Version": "2022-11-28",
     }
-    if UPDATE_TOKEN:
-        h["Authorization"] = f"Bearer {UPDATE_TOKEN}"
+    token = _get_token()
+    if token:
+        h["Authorization"] = f"Bearer {token}"
     return h
 
 # ─── Debug log (breadcrumbs to %TEMP%) ───
@@ -154,7 +165,7 @@ def check_for_update(current_version: str, timeout: float = 3.0) -> Optional[Upd
     # because `browser_download_url` 302s to S3 which strips the auth
     # header. For PUBLIC repos either works — we use browser_download_url
     # as the fallback when no token is set.
-    if UPDATE_TOKEN and asset.get("url"):
+    if _get_token() and asset.get("url"):
         download_url = str(asset.get("url"))
     else:
         download_url = str(asset.get("browser_download_url") or "")
