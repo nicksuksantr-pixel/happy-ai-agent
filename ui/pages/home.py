@@ -35,8 +35,10 @@ class HomePage(ctk.CTkFrame):
         outer.pack(fill="both", expand=True,
                    padx=theme.PADDING_PAGE, pady=theme.PADDING_PAGE)
         outer.grid_columnconfigure(0, weight=1)
-        # Row 2 = Compose card (grows). Row 3 = Recent runs (fixed-ish).
-        outer.grid_rowconfigure(2, weight=1)
+        # Row layout:
+        #   0 = header  /  1 = divider  /  2 = auth warning (conditional)
+        #   3 = compose card (grows)    /  4 = recent runs (fixed-ish)
+        outer.grid_rowconfigure(3, weight=1)
 
         # ── Page header (emoji + title + subtitle + Tune gear) ─────────
         header = ctk.CTkFrame(outer, fg_color="transparent")
@@ -115,7 +117,7 @@ class HomePage(ctk.CTkFrame):
             border_color=theme.BORDER_DIM, border_width=1,
             corner_radius=theme.RADIUS_CARD,
         )
-        self.compose.grid(row=2, column=0, sticky="nsew",
+        self.compose.grid(row=3, column=0, sticky="nsew",
                           pady=(0, theme.S4))
         self.compose.grid_columnconfigure(0, weight=1)
         # Row 1 = task input grows to fill card.
@@ -258,7 +260,7 @@ class HomePage(ctk.CTkFrame):
             border_color=theme.BORDER_DIM, border_width=1,
             corner_radius=theme.RADIUS_CARD,
         )
-        self.recent_card.grid(row=3, column=0, sticky="ew")
+        self.recent_card.grid(row=4, column=0, sticky="ew")
         self.recent_card.grid_columnconfigure(0, weight=1)
 
         recent_head = ctk.CTkFrame(self.recent_card, fg_color="transparent")
@@ -299,15 +301,11 @@ class HomePage(ctk.CTkFrame):
     def on_show(self) -> None:
         s = self.app.app_state
 
-        # Auth gate visibility.
+        # Auth gate sits in dedicated row 2 (between divider at row 1 and
+        # compose card at row 3) — no overlap, gridded on demand.
         if not s.auth_ready:
-            self.auth_warn.grid(row=0, column=0, sticky="ew",
+            self.auth_warn.grid(row=2, column=0, sticky="ew",
                                 pady=(0, theme.S4))
-            # Push the header down so it stays visible above the warning.
-            # (No regrid needed — auth_warn lives in row 0 of outer when
-            # shown, but Home places header at row 0 already. To keep it
-            # simple we tuck the warning between header and Compose by
-            # using row 1 underneath the divider.)
             self.start_btn.configure(state="disabled")
         else:
             self.auth_warn.grid_remove()

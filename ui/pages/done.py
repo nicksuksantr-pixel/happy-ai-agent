@@ -8,7 +8,12 @@ from tkinter import filedialog, messagebox
 import customtkinter as ctk
 
 from agents import get_phases_for_mode
-from builder import build_exe_from_session
+from builder import (
+    PYTHON_MISSING_SENTINEL,
+    build_exe_from_session,
+    install_python_via_winget,
+    open_python_org,
+)
 from extractor import build_full_export_zip, build_zip, extract_from_session
 from pipeline import build_combined_txt, delete_session, load_session
 
@@ -465,11 +470,111 @@ class DonePage(ctk.CTkFrame):
     def _after_build(self, result_box: dict) -> None:
         if result_box.get("ok"):
             self._save_exe_from_cache(result_box)
-        else:
-            messagebox.showerror(
-                "Build failed",
-                result_box.get("message", "unknown"),
+            return
+
+        msg = result_box.get("message", "unknown")
+        # Special case: builder signalled "Python not installed" — offer
+        # to auto-install via winget instead of just dumping an error.
+        if msg == PYTHON_MISSING_SENTINEL:
+            self._handle_python_missing()
+            return
+        messagebox.showerror("Build failed", msg)
+
+    def _handle_python_missing(self) -> None:
+        """Python isn't installed on this machine. Offer to auto-install
+        via winget (~30 MB, 1-2 min). Fall back to opening python.org."""
+        if not messagebox.askyesno(
+            "Python not installed",
+            "Building .exe needs Python on your machine, and we didn't "
+            "find it.\n\n"
+            "Install Python 3.13 automatically? (about 30 MB, 1-2 minutes)\n\n"
+            "Click No to open python.org and install manually instead.",
+        ):
+            open_python_org()
+            messagebox.showinfo(
+                "Python download",
+                "Browser opened to python.org. After install, come back "
+                "and click Build .exe again.",
             )
+            return
+        self._run_python_install()
+
+    def _run_python_install(self) -> None:
+        """Show a modal while winget installs Python. On success, retry
+        the Build .exe automatically. On failure, fall back to python.org."""
+        from ui.modals.dark_modal import dark_modal as _dark_modal
+        win, body = _dark_modal(
+            self, title="Installing Python", emoji="🐍",
+            width=560, height=200, closable=False,
+        )
+
+        ctk.CTkLabel(
+            body, text="Installing Python 3.13 via winget...",
+            font=theme.FONT_SUBHEAD, text_color=theme.ACCENT,
+            anchor="w",
+        ).grid(row=0, column=0, sticky="ew",
+               pady=(theme.S2, theme.S1))
+        msg_label = ctk.CTkLabel(
+            body, text="Starting...",
+            font=theme.FONT_SMALL, text_color=theme.TEXT_SUB,
+            anchor="w", wraplength=480, justify="left",
+        )
+        msg_label.grid(row=1, column=0, sticky="ew", pady=(0, theme.S3))
+        prog = ctk.CTkProgressBar(
+            body, mode="indeterminate",
+            progress_color=theme.ACCENT, fg_color=theme.BG_CARD,
+            height=8, corner_radius=4,
+        )
+        prog.grid(row=2, column=0, sticky="ew")
+        prog.start()
+
+        modal_alive = {"v": True}
+
+        def progress_cb(text: str) -> None:
+            if not modal_alive["v"]:
+                return
+            try:
+                self.after(0, lambda t=text: (
+                    modal_alive["v"] and msg_label.configure(text=t)
+                ))
+            except Exception:
+                pass
+
+        result = {}
+
+        def worker():
+            ok, m = install_python_via_winget(progress_cb=progress_cb)
+            result["ok"] = ok
+            result["msg"] = m
+            self.after(0, _finish)
+
+        def _finish():
+            modal_alive["v"] = False
+            try:
+                prog.stop()
+                win.grab_release()
+                win.destroy()
+            except Exception:
+                pass
+            if result.get("ok"):
+                messagebox.showinfo(
+                    "Python installed",
+                    "Python is ready. Retrying the .exe build now.",
+                )
+                # Retry build_exe from scratch.
+                self.app.app_state.exe_built_cache.pop(
+                    self.app.app_state.current_session_path.name, None
+                )
+                self.after(150, self._build_exe)
+            else:
+                if messagebox.askyesno(
+                    "winget install failed",
+                    f"{result.get('msg', 'unknown error')}\n\n"
+                    f"Open python.org to install manually?",
+                ):
+                    open_python_org()
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _save_exe_from_cache(self, cached: dict) -> None:
         if not cached.get("bytes"):

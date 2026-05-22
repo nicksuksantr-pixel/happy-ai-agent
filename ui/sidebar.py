@@ -208,11 +208,35 @@ class Sidebar(ctk.CTkFrame):
             pass
 
     # ── Update pill ──────────────────────────────────────────────────────
-    def show_update_pill(self, info) -> None:
+    def show_update_pill(self, info, *, state: str = "ready") -> None:
+        """Show the sidebar update pill.
+
+        state values:
+          - "downloading" — yellow, downloading silently in background
+          - "ready"       — green, downloaded, click to install
+          - "queued"      — orange, pipeline is running so install deferred
+        """
         try:
-            self.update_pill.configure(text=f"Update {info.tag} ready  ->")
+            colors = {
+                "downloading": (theme.WARN, "#d97706",
+                                f"Downloading v{info.version}..."),
+                "ready":       (theme.SUCCESS, "#16a34a",
+                                f"Update v{info.version} ready ->"),
+                "queued":      (theme.ACCENT, theme.ACCENT_HOVER,
+                                f"Update v{info.version} after run"),
+            }
+            fg, hover, text = colors.get(state, colors["ready"])
+            self.update_pill.configure(
+                text=text, fg_color=fg, hover_color=hover,
+            )
             self.update_pill.grid(row=6, column=0, padx=theme.S3,
                                   pady=(0, theme.S2), sticky="ew")
+        except Exception:
+            pass
+
+    def hide_update_pill(self) -> None:
+        try:
+            self.update_pill.grid_remove()
         except Exception:
             pass
 

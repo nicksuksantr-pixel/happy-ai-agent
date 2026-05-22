@@ -88,20 +88,100 @@ def _find_python_executable() -> Optional[str]:
     return None
 
 
+PYTHON_MISSING_SENTINEL = "__PYTHON_MISSING__"
+
+
 def _no_python_help_message() -> str:
-    """Python ไม่เจอ → เปิด browser ไป python.org อัตโนมัติ + return user-friendly message.
-    Nick directive (2026-05-16): ให้ user ไปโหลดเอง — แค่เปิดทางให้สะดวก"""
+    """Sentinel returned when Python is missing. The UI catches this and
+    offers winget-based install (see `install_python_via_winget`); if the
+    user declines or winget fails, the UI opens python.org as a fallback.
+
+    Why a sentinel: build_exe_from_session is called from a worker thread
+    that can't surface confirm dialogs. UI flow controls the prompt.
+    """
+    return PYTHON_MISSING_SENTINEL
+
+
+def _check_winget_available() -> bool:
+    """Return True if winget is installed and on PATH (Windows 11 default).
+    Cached behaviour not needed — only called when Python is missing."""
+    return shutil.which("winget") is not None
+
+
+def install_python_via_winget(
+    progress_cb=None,
+    package_id: str = "Python.Python.3.13",
+) -> tuple:
+    """Install Python via winget. Returns (success: bool, message: str).
+
+    Designed for the "no Python" recovery path in the .exe builder —
+    when the user's machine doesn't have Python yet, this fetches it
+    quietly so the next Build .exe attempt succeeds.
+
+    The call is synchronous (winget blocks until install finishes).
+    Caller should run in a worker thread + show a progress modal.
+
+    progress_cb(text: str) is called with status text as winget streams.
+    Returns immediately with (False, "winget not available") if winget
+    isn't on PATH.
+    """
+    if not _check_winget_available():
+        return False, "winget not available — please install Python manually"
+
+    args = [
+        "winget", "install", "--id", package_id,
+        "--silent", "--accept-package-agreements",
+        "--accept-source-agreements",
+        # --scope user keeps Windows from prompting UAC for admin install
+        "--scope", "user",
+    ]
+    try:
+        if progress_cb:
+            try:
+                progress_cb("Starting Python installation via winget...")
+            except Exception:
+                pass
+        proc = subprocess.Popen(
+            args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, creationflags=_NO_WINDOW,
+        )
+        # Stream stdout to progress_cb for the user — winget reports
+        # progress lines (e.g. "Downloading...", "Installing...").
+        for line in iter(proc.stdout.readline, ""):
+            line = (line or "").strip()
+            if line and progress_cb:
+                try:
+                    progress_cb(line[:120])
+                except Exception:
+                    pass
+        proc.wait(timeout=300)
+        if proc.returncode == 0:
+            # Bust the cache so the next _find_python_executable() call
+            # re-scans the system.
+            global _PYTHON_EXE_CACHE
+            _PYTHON_EXE_CACHE = None
+            return True, "Python installed successfully via winget"
+        return False, (
+            f"winget exited with code {proc.returncode} — "
+            f"try installing Python manually from python.org"
+        )
+    except subprocess.TimeoutExpired:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        return False, "winget install timed out after 5 minutes"
+    except Exception as e:
+        return False, f"winget install error: {str(e)[:120]}"
+
+
+def open_python_org() -> None:
+    """Manual fallback: open python.org in the user's browser."""
     try:
         import webbrowser
         webbrowser.open("https://www.python.org/downloads/")
     except Exception:
         pass
-    return (
-        "ยังไม่เจอ Python ในเครื่อง — เปิดหน้า python.org ให้แล้ว 🌐\n"
-        "1. โหลด Python 3.11+ (~30 MB)\n"
-        "2. ติดตั้ง — ตอนติดตั้งติ๊ก 'Add Python to PATH'\n"
-        "3. กลับมากดปุ่ม Build อีกครั้ง"
-    )
 
 
 def _is_test_file(name: str) -> bool:
