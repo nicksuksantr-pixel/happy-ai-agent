@@ -188,6 +188,11 @@ class HappyApp(ctk.CTk):
         self._update_ready: bool = False        # download done, install pending
         self._installing: bool = False          # in launch_installer_and_exit
         self._auto_install_toast_open: bool = False
+        # Cancel handle for the in-flight background download. set()
+        # in destroy() so the worker exits its read loop quickly
+        # instead of holding the daemon thread until Python tears
+        # down the interpreter (HPO v1.034 pattern).
+        self._update_cancel_event: threading.Event = threading.Event()
 
         # ── State ───────────────────────────────────────────────────────
         self.app_state = AppState()
@@ -262,9 +267,29 @@ class HappyApp(ctk.CTk):
 
     def _persist_geometry(self) -> None:
         try:
+            # Guard against persisting geometry while the window is
+            # withdrawn (hide-to-tray) or iconified — Tk reports a
+            # nonsense "1x1+0+0" or stale pre-hide value in those
+            # states, which on next launch would either snap the
+            # window into a 1x1 pixel postage stamp or load a
+            # phantom previous-position. HPO v1.034 pattern.
+            try:
+                wstate = self.state()
+            except Exception:
+                wstate = "normal"
+            if wstate in ("withdrawn", "iconic"):
+                self._geo_save_id = None
+                return
+            geo = self.geometry()
+            # Bonus sanity: a freshly-restored window can briefly
+            # report "1x1+0+0" before Tk computes the real bbox.
+            # Never persist that.
+            if geo.startswith("1x1"):
+                self._geo_save_id = None
+                return
             # Merge so we don't clobber other keys (e.g. last_page).
             state = load_window_state()
-            state["geometry"] = self.geometry()
+            state["geometry"] = geo
             save_window_state(state)
         except Exception:
             pass
@@ -472,14 +497,24 @@ class HappyApp(ctk.CTk):
         if self._update_downloading:
             return
         self._update_downloading = True
+        # Fresh event per download so a previously-cancelled run doesn't
+        # abort this one before the first byte. The destroy() path will
+        # set whichever instance is current.
+        self._update_cancel_event = threading.Event()
         dest = updater.cache_dir() / updater.INSTALLER_ASSET_NAME
+        cancel_event = self._update_cancel_event
 
         def worker():
             ok, _msg = updater.download_installer(
                 info.download_url, dest,
                 progress_cb=None,        # silent
-                cancel_event=None,
+                cancel_event=cancel_event,
             )
+            # If we got cancelled (e.g. user quit mid-download) don't
+            # bother posting back to the destroyed widget — the Tk
+            # mainloop has already exited.
+            if cancel_event.is_set():
+                return
             self.after(0, lambda: self._finish_background_download(
                 ok=ok, dest=dest, info=info
             ))
@@ -947,6 +982,17 @@ class HappyApp(ctk.CTk):
             except Exception:
                 pass
             self._drain_id = None
+        # Signal the background download worker (if any) to abort —
+        # the worker checks cancel_event.is_set() inside its read
+        # loop and unlinks the partial file before returning. Without
+        # this the daemon thread would hold the socket open until
+        # Python tears down the interpreter, which can leave a
+        # half-written installer in ~/.happy/updates/.
+        if getattr(self, "_update_cancel_event", None) is not None:
+            try:
+                self._update_cancel_event.set()
+            except Exception:
+                pass
         if self.app_state.running:
             self.app_state.stop_flag["stop"] = True
         try:

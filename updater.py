@@ -68,13 +68,39 @@ def _auth_headers(accept: str = "application/vnd.github+json") -> dict:
 # ─── Debug log (breadcrumbs to %TEMP%) ───
 _LOG_PATH = Path(tempfile.gettempdir()) / "happy-ai-agent-updater.log"
 _LOG_LOCK = threading.Lock()
+_LOG_MAX_BYTES = 1_000_000   # 1 MB — rotate at this size
+_LOG_BACKUP_SUFFIX = ".old"
 
 
 def _debug_log(msg: str) -> None:
-    """Append a timestamped breadcrumb. Best-effort; never raises."""
+    """Append a timestamped breadcrumb with size-based rotation.
+
+    HPO v1.034 pattern: append-forever logs eventually bloat the user's
+    %TEMP% dir. Rotate at 1 MB to a single `.old` backup so the most
+    recent breadcrumbs are preserved across at most one rollover.
+
+    Best-effort; never raises.
+    """
     try:
         ts = time.strftime("%Y-%m-%d %H:%M:%S")
         with _LOG_LOCK:
+            # Cheap size check before opening for append.
+            try:
+                if _LOG_PATH.exists() and _LOG_PATH.stat().st_size > _LOG_MAX_BYTES:
+                    backup = _LOG_PATH.with_suffix(
+                        _LOG_PATH.suffix + _LOG_BACKUP_SUFFIX
+                    )
+                    try:
+                        if backup.exists():
+                            backup.unlink()
+                    except OSError:
+                        pass
+                    try:
+                        _LOG_PATH.rename(backup)
+                    except OSError:
+                        pass
+            except OSError:
+                pass
             with open(_LOG_PATH, "a", encoding="utf-8") as f:
                 f.write(f"[{ts}] {msg}\n")
     except Exception:
@@ -115,16 +141,62 @@ def is_newer(current: str, latest: str) -> bool:
 
 # ─── GitHub Releases API ───
 
+_ETAG_PATH = Path.home() / ".happy" / "updater_etag.json"
+
+
+def _load_etag() -> str:
+    """Return cached ETag for the /releases/latest endpoint, or ""."""
+    try:
+        if _ETAG_PATH.exists():
+            data = json.loads(_ETAG_PATH.read_text(encoding="utf-8"))
+            return str(data.get("etag", "")) if isinstance(data, dict) else ""
+    except Exception:
+        pass
+    return ""
+
+
+def _save_etag(etag: str) -> None:
+    """Persist the ETag so the next check can send If-None-Match."""
+    try:
+        _ETAG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _ETAG_PATH.write_text(
+            json.dumps({"etag": etag}), encoding="utf-8"
+        )
+    except Exception:
+        pass
+
+
 def _fetch_latest_release(timeout: float) -> Optional[dict]:
+    """Fetch /releases/latest with ETag-conditional GET.
+
+    Sends If-None-Match: <cached-etag>. GitHub returns 304 Not Modified
+    when nothing has changed — we skip JSON parsing and reuse the
+    "no update" path. This shaves ~5-10 KB per hourly poll and (more
+    importantly) costs ZERO against the 60 req/hr unauthed rate limit
+    when the response is 304 — only authed token bumps that to 5 000/hr.
+    """
     url = f"{GITHUB_API}/repos/{REPO}/releases/latest"
-    req = urllib.request.Request(url, headers=_auth_headers())
+    headers = _auth_headers()
+    cached_etag = _load_etag()
+    if cached_etag:
+        headers["If-None-Match"] = cached_etag
+    req = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             if resp.status != 200:
                 _debug_log(f"_fetch_latest_release: HTTP {resp.status}")
                 return None
+            # Cache new ETag for next call (may be missing on some
+            # GitHub mirrors — that's fine, we'd just full-fetch).
+            new_etag = resp.headers.get("ETag", "")
+            if new_etag and new_etag != cached_etag:
+                _save_etag(new_etag)
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
+        # 304 Not Modified = no new release; quiet success.
+        if e.code == 304:
+            _debug_log("_fetch_latest_release: 304 not modified (cached)")
+            return None
         _debug_log(f"_fetch_latest_release: HTTPError {e.code}")
         return None
     except (urllib.error.URLError,
