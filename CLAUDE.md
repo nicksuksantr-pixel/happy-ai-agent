@@ -8,32 +8,36 @@
 
 User inputs a prompt → **11–18 AI agents** collaborate in sequence (PM → Architect → DB Admin → Coder → Frontend → Tester → Debugger → Judge → DevOps → Summarizer → PM Final) → produces working Python/HTML/JS code that runs immediately.
 
-UI is a **native CustomTkinter desktop app** (since v2.0.0, no Streamlit / no localhost port).
+UI is a **native CustomTkinter desktop app**. No localhost port, no HTTP server.
 
 ---
 
 ## 📂 Key files
 
 ```
-happy_native.py             ← Native CTk UI (Settings, Home, Running, Done pages)
+happy_native.py             ← Thin entry: crash log + single-instance mutex + ui.app.main()
+core/                       ← config.py + persistence.py (settings + window_state JSON)
+ui/                         ← All UI (theme + 6 pages + components + modals)
+  ├── app.py                ← HappyApp, AppState, pipeline drain, auto-update flow
+  ├── sidebar.py            ← Logo + 4-nav + auth pill + update pill
+  ├── theme.py              ← Dark palette + 4-px spacing grid + fonts
+  ├── components/           ← logo, page_header, section_card, pill, status_dot, output_view
+  ├── modals/dark_modal.py  ← Borderless dark CTkToplevel
+  └── pages/                ← home, runs, stats, settings, running, done
 pipeline.py                 ← PipelineRunner — orchestrator + retry + TPM watcher
 agents.py                   ← All 17 agent prompts + CONTEXT_MAP
 auth.py                     ← Gemini API key (~/.happy/auth.json)
 builder.py                  ← Build user code → .exe via PyInstaller (Python + Web)
 extractor.py                ← Split code blocks → files
 file_loader.py              ← Multimodal attachments (image/pdf/word/excel)
-updater.py                  ← GitHub Releases auto-updater
+updater.py                  ← GitHub Releases auto-updater (private repo + PAT)
 VERSION                     ← Plain-text version (single source of truth)
 HappyAIAgent.spec           ← PyInstaller spec — main app
+tools/make_icon.py          ← Multi-res .ico generator
 installer/installer.py      ← Custom Python installer (dark cosmic UI, 3-phase, sparkles)
 installer/build_installer.py← Build pipeline (zip payload + PyInstaller installer)
 installer/HappyAIAgentSetup.spec  ← Installer PyInstaller spec
-sessions/                   ← User session output (auto-created)
-HANDOFF.md                  ← Old handoff doc (pre-v2.0 — historical)
 ```
-
-**Legacy files (kept for reference, not used):**
-- `app.py`, `happy_desktop.py`, `.streamlit/` — old Streamlit version (v1.032 and earlier)
 
 ---
 
@@ -64,7 +68,8 @@ HANDOFF.md                  ← Old handoff doc (pre-v2.0 — historical)
 - ❌ Don't recommend Vertex AI (Nick closed GCP, lost ฿334)
 - ❌ Don't edit code if acting as Coss — analysis only
 - ❌ Don't reduce delay below 30s (TPM rate limit protection)
-- ❌ Don't bring back Streamlit (v2.0+ is native CTk on purpose — no port collisions)
+- ❌ Don't bring back Streamlit / HTTP server / localhost port — native CTk only
+- ❌ Don't reference `backups/happy_native_v2.0.6_pre_ui_rewrite.py` — deleted 2026-05-23 (was pre-`core/`+`ui/` split, caused stale audit confusion)
 
 ---
 

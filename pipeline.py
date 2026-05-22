@@ -276,7 +276,7 @@ def _estimate_input_tokens(text: str) -> int:
 
 def _safe_log(msg: str) -> None:
     """Print to stdout safely. Windows default stdio = cp1252 → unicode chars (≥, —, etc.)
-    raise UnicodeEncodeError when piped from Streamlit subprocess. Fallback to ASCII replace
+    can raise UnicodeEncodeError when piped/redirected. Fallback to ASCII replace
     so the pipeline doesn't crash on a logging line."""
     try:
         print(msg, flush=True)

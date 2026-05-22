@@ -1,7 +1,6 @@
 # Credentials — NEVER commit
 *.json
 !package.json
-!.streamlit/*.json
 service-account*.json
 credentials*.json
 *.key
@@ -23,9 +22,6 @@ __pycache__/
 .venv/
 venv/
 env/
-
-# Streamlit
-.streamlit/secrets.toml
 
 # IDE
 .vscode/
@@ -83,11 +79,6 @@ HANDOFF.md
 HANDOFF_ARCHIVE_coddy1to4.md
 ONBOARD_NEW_CODDY.md
 ONBOARD_NEW_COSS.md
-app.py
-app.py.bak3
-happy_desktop.py
-streamlit_stderr.log
-streamlit_stdout.log
 installer-stderr.log
 installer-stdout.log
 se.log
