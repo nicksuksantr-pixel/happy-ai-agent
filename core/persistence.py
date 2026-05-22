@@ -2,10 +2,15 @@
 
 Best-effort writes (UI state isn't fatal to lose). Reads return a default
 when the file is missing or malformed so callers don't need try/except.
+
+Writes are atomic (temp file + fsync + os.replace) — ENA Desktop v2.6.7
+pattern — so a crash/power-loss mid-write can't leave half-written JSON.
 """
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -23,12 +28,34 @@ def _load_json(path: Path, default: Any) -> Any:
 
 
 def _save_json(path: Path, data: Any) -> None:
+    """Atomic JSON write: write to a temp file in the same dir, fsync,
+    then os.replace onto the target. A crash/power-loss either leaves
+    the OLD file intact OR atomically swaps in the new one — never a
+    half-written JSON that future loads would treat as corrupt."""
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps(data, indent=2, ensure_ascii=False),
-            encoding="utf-8",
+        payload = json.dumps(data, indent=2, ensure_ascii=False)
+        # mkstemp in the same directory so os.replace is atomic on Windows
+        # (cross-volume rename would fall back to copy+delete).
+        fd, tmp_path = tempfile.mkstemp(
+            prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent),
         )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(payload)
+                f.flush()
+                try:
+                    os.fsync(f.fileno())
+                except OSError:
+                    pass  # filesystem may not support fsync (e.g. tmpfs)
+            os.replace(tmp_path, path)
+        except Exception:
+            # Clean up the orphan temp file so we don't litter the dir.
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
     except OSError:
         pass  # best-effort — UI state isn't fatal to lose
 

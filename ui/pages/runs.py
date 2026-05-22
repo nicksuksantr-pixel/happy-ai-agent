@@ -357,15 +357,31 @@ class RunsPage(ctk.CTkFrame):
         return path.name[:10]
 
     def _open(self, sp: Path, status: str) -> None:
+        # Guard: don't reassign session_path while a pipeline is running
+        # in another session (would break Running page's live counters).
+        if (self.app.app_state.running
+                and self.app.app_state.current_session_path is not None
+                and self.app.app_state.current_session_path != sp):
+            messagebox.showinfo(
+                "Pipeline running",
+                "Finish or stop the current pipeline first before "
+                "opening another session.",
+            )
+            self.app.show_page("running")
+            return
         try:
             data = load_session(sp)
-            self.app.app_state.current_session_path = sp
-            self.app.app_state.current_outputs = data["outputs"]
-            self.app.show_page(
-                "running" if status == "running" else "done"
-            )
         except Exception as e:
             messagebox.showerror("Could not open session", str(e))
+            return
+        self.app.app_state.current_session_path = sp
+        self.app.app_state.current_outputs = data["outputs"]
+        # Stale status="running" (from a crashed previous run) → still
+        # land on Done so the user sees partial output instead of an
+        # empty Running page wired to a dead pipeline.
+        is_live = (self.app.app_state.running
+                   and self.app.app_state.current_session_path == sp)
+        self.app.show_page("running" if is_live else "done")
 
     def _delete(self, sp: Path) -> None:
         if not messagebox.askyesno(

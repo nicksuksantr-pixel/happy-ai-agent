@@ -419,8 +419,13 @@ class RunningPage(ctk.CTkFrame):
                           else "transparent"),
             )
 
-        # Title bar reflects pipeline state
-        if running_pid and pid in self._agent_rows:
+        # Title bar reflects pipeline state. Look up the row by
+        # running_pid — DO NOT rely on the for-loop's leftover `pid`
+        # variable; if `_agent_rows` is empty it would be undefined
+        # (NameError). Also check that the running pid actually has a
+        # row, since pipeline_status keys can include phases not in
+        # the displayed mode (e.g. revision rounds).
+        if running_pid and running_pid in self._agent_rows:
             running_name = self._agent_rows[running_pid][2].cget("text")
             self.title_label.configure(
                 text=f"Working on  {running_name}",

@@ -432,15 +432,34 @@ class HomePage(ctk.CTkFrame):
         return s["path"].name[:10]
 
     def _open_session(self, sp: Path, status: str) -> None:
+        # Guard: never swap session_path out from under a live pipeline.
+        # current_session_path is the one the runner is writing into; if
+        # the user clicked a different session while a pipeline is
+        # running, point them at the live one + complain.
+        if (self.app.app_state.running
+                and self.app.app_state.current_session_path is not None
+                and self.app.app_state.current_session_path != sp):
+            messagebox.showinfo(
+                "Pipeline running",
+                "Finish or stop the current pipeline first before "
+                "opening another session.",
+            )
+            self.app.show_page("running")
+            return
         try:
             data = load_session(sp)
-            self.app.app_state.current_session_path = sp
-            self.app.app_state.current_outputs = data["outputs"]
-            self.app.show_page(
-                "running" if status == "running" else "done"
-            )
         except Exception as e:
             messagebox.showerror("Could not open session", str(e))
+            return
+        self.app.app_state.current_session_path = sp
+        self.app.app_state.current_outputs = data["outputs"]
+        # Open Running only if this IS the live session of a running
+        # pipeline. A status="running" in meta from a previous crashed
+        # run is stale — show Done so the user can see partial output
+        # instead of an empty Running page wired to a dead runner.
+        is_live = (self.app.app_state.running
+                   and self.app.app_state.current_session_path == sp)
+        self.app.show_page("running" if is_live else "done")
 
     # ── Mode + attach handlers ──────────────────────────────────────────
     def _on_mode_change(self, value: str) -> None:

@@ -3,6 +3,7 @@ pipeline.py - Multi-agent orchestrator with attachments + thorough mode
 """
 import json
 import os
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -21,12 +22,42 @@ from agents import (
 SESSIONS_DIR = Path.home() / ".happy" / "sessions"
 
 
+def _atomic_write_text(path: Path, content: str) -> None:
+    """Atomic file write: tmp + fsync + os.replace.
+
+    ENA Desktop v2.6.7 pattern — a crash/power-loss between open and
+    close leaves either the OLD file intact OR the new file in place,
+    never a half-written JSON that future reads would treat as corrupt
+    (list_sessions silently drops sessions whose meta.json doesn't
+    parse).
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent),
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except OSError:
+                pass
+        os.replace(tmp_path, path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
 def create_session(task, model, settings):
     SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     session_path = SESSIONS_DIR / timestamp
     session_path.mkdir(parents=True, exist_ok=True)
-    (session_path / "00_task.txt").write_text(task, encoding="utf-8")
+    _atomic_write_text(session_path / "00_task.txt", task)
     meta = {
         "task": task[:500],
         "model": model,
@@ -38,8 +69,9 @@ def create_session(task, model, settings):
         "judge_rounds": 0,
         "has_attachments": False,
     }
-    (session_path / "_meta.json").write_text(
-        json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
+    _atomic_write_text(
+        session_path / "_meta.json",
+        json.dumps(meta, ensure_ascii=False, indent=2),
     )
     return session_path
 
@@ -51,18 +83,23 @@ def update_meta(session_path, **updates):
     except Exception:
         meta = {}
     meta.update(updates)
-    meta_file.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    _atomic_write_text(
+        meta_file, json.dumps(meta, ensure_ascii=False, indent=2)
+    )
 
 
 def save_phase_output(session_path, phase_index, phase_id, content):
     filename = f"{phase_index:02d}_{phase_id}.md"
-    (session_path / filename).write_text(content, encoding="utf-8")
+    _atomic_write_text(session_path / filename, content)
     meta_file = session_path / "_meta.json"
     try:
         meta = json.loads(meta_file.read_text(encoding="utf-8"))
         if phase_id not in meta.get("phases_completed", []):
             meta.setdefault("phases_completed", []).append(phase_id)
-            meta_file.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+            _atomic_write_text(
+                meta_file,
+                json.dumps(meta, ensure_ascii=False, indent=2),
+            )
     except Exception:
         pass
 

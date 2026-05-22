@@ -364,15 +364,34 @@ def cache_dir() -> Path:
 
 
 def cleanup_old_installers(keep: Optional[str] = None) -> None:
-    """Remove cached installer .exe files, except `keep` filename."""
+    """Prune `~/.happy/updates/` to just the active installer.
+
+    Distribution format is now `HappyAIAgent-Setup.zip` (extracted under
+    `HappyAIAgent-Setup/` on install). Previous releases shipped `.exe`
+    directly. Clean both shapes — keep only the file named `keep` (if
+    given) plus its sibling extraction folder. Everything else is gone.
+
+    Called after a successful background download in app.py so the
+    cache doesn't accumulate every release forever.
+    """
     try:
-        for f in cache_dir().iterdir():
-            if f.is_file() and f.suffix.lower() == ".exe":
+        d = cache_dir()
+        for f in d.iterdir():
+            try:
+                # Always preserve the file we just downloaded.
                 if keep and f.name == keep:
                     continue
-                try:
+                # Preserve its extraction folder too (zip stem).
+                if (keep and f.is_dir()
+                        and f.name == Path(keep).stem):
+                    continue
+                if f.is_file() and f.suffix.lower() in (".exe", ".zip"):
                     f.unlink()
-                except Exception:
-                    pass
+                elif f.is_dir():
+                    # Old extracted folders from previous installers.
+                    import shutil
+                    shutil.rmtree(f, ignore_errors=True)
+            except Exception:
+                pass
     except Exception:
         pass

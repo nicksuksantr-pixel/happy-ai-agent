@@ -234,7 +234,12 @@ class HappyApp(ctk.CTk):
         self._persisting_last_page = True
 
         # ── Background loops ────────────────────────────────────────────
-        self.after(200, self._drain_pipeline_queue)
+        # Track the drain ticker's after-id so destroy() can cancel it —
+        # stops Tcl warnings about callbacks scheduled on a destroyed
+        # widget if the X-button quit beats the next 200 ms tick.
+        self._drain_id: Optional[str] = self.after(
+            200, self._drain_pipeline_queue
+        )
         self.after(3000, self._check_for_update_now)
         self._schedule_next_update_check()
 
@@ -370,9 +375,20 @@ class HappyApp(ctk.CTk):
         the window doesn't lose work (tray keeps the run alive), but
         explicit Quit would. _do_real_quit handles the Quit branch with
         its own warning + state-save path; here we just hide to tray.
+
+        Tray-failure fallback (ENA Desktop v2.6.6 pattern): if pystray
+        failed to start (`_tray_icon is None`), hiding to tray would
+        strand the user — no taskbar entry, no tray icon, no way back.
+        In that case fall through to a real quit so X behaves like Quit.
         """
         if self._really_quit:
             self.destroy()
+            return
+        if self._tray_icon is None:
+            # No tray available — withdraw would orphan the user. Treat
+            # X as Quit (with the same data-loss guard as _do_real_quit).
+            self._really_quit = True
+            self._do_real_quit()
             return
         self.withdraw()
 
@@ -473,6 +489,13 @@ class HappyApp(ctk.CTk):
             return
         self._update_download_path = dest
         self._update_ready = True
+        # Prune older cached installers (.zip + extracted folders) —
+        # keep only the file we just downloaded. Without this, every
+        # release would accumulate ~91 MB in ~/.happy/updates/ forever.
+        try:
+            updater.cleanup_old_installers(keep=dest.name)
+        except Exception:
+            pass
         try:
             self.sidebar.show_update_pill(info, state="ready")
         except Exception:
@@ -848,7 +871,7 @@ class HappyApp(ctk.CTk):
                     self._handle_pipeline_msg(msg)
             except queue.Empty:
                 pass
-        self.after(200, self._drain_pipeline_queue)
+        self._drain_id = self.after(200, self._drain_pipeline_queue)
 
     def _handle_pipeline_msg(self, msg) -> None:
         kind = msg[0]
@@ -906,6 +929,15 @@ class HappyApp(ctk.CTk):
                 self.after_cancel(self._update_check_id)
             except Exception:
                 pass
+        # Cancel the pipeline-queue drain ticker so the next 200 ms
+        # tick doesn't fire on a destroyed widget (raises a Tcl error
+        # on some Tk builds).
+        if getattr(self, "_drain_id", None) is not None:
+            try:
+                self.after_cancel(self._drain_id)
+            except Exception:
+                pass
+            self._drain_id = None
         if self.app_state.running:
             self.app_state.stop_flag["stop"] = True
         try:
