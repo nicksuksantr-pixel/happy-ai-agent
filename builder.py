@@ -13,6 +13,12 @@ from typing import Tuple, Optional
 
 from extractor import extract_from_session
 
+# Fix v2.0.4 (Nick directive 2026-05-22): when HAPPY runs as PyInstaller
+# --windowed exe, every subprocess we spawn (py.exe / pip / PyInstaller) pops a
+# black console window because Windows allocates a new console for any console
+# subsystem child when its parent has none. CREATE_NO_WINDOW suppresses that.
+_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
+
 
 # Fix P1.3 (2026-05-15 Coddy #4): หา python.exe จริง — ห้ามใช้ sys.executable ใน frozen mode
 # Background: ใน HAPPY.exe (PyInstaller frozen), sys.executable = HAPPY.exe ไม่ใช่ python.exe
@@ -26,7 +32,8 @@ def _looks_like_python(path: str) -> bool:
     try:
         r = subprocess.run(
             [path, "-c", "import sys; print('PYOK', sys.version_info[0])"],
-            capture_output=True, timeout=5, text=True
+            capture_output=True, timeout=5, text=True,
+            creationflags=_NO_WINDOW,
         )
         return r.returncode == 0 and "PYOK" in (r.stdout or "")
     except Exception:
@@ -180,14 +187,16 @@ def _ensure_pkg_installed(pkg_import_name: str, pip_name: Optional[str] = None) 
     try:
         subprocess.run(
             [py, "-c", f"import {pkg_import_name}"],
-            check=True, capture_output=True, timeout=10
+            check=True, capture_output=True, timeout=10,
+            creationflags=_NO_WINDOW,
         )
         return True, "already installed"
     except Exception:
         try:
             subprocess.run(
                 [py, "-m", "pip", "install", pip_name],
-                check=True, capture_output=True, timeout=180, text=True
+                check=True, capture_output=True, timeout=180, text=True,
+                creationflags=_NO_WINDOW,
             )
             return True, "installed"
         except subprocess.CalledProcessError as e:
@@ -301,7 +310,8 @@ def build_exe_from_session(session_path: Path, progress_cb=None) -> Tuple[bool, 
         ]
         try:
             proc = subprocess.run(
-                cmd, capture_output=True, timeout=300, text=True, cwd=str(tmp_path)
+                cmd, capture_output=True, timeout=300, text=True, cwd=str(tmp_path),
+                creationflags=_NO_WINDOW,
             )
         except subprocess.TimeoutExpired:
             return False, "Build timeout (เกิน 5 นาที)", None, None
@@ -323,7 +333,7 @@ def build_exe_from_session(session_path: Path, progress_cb=None) -> Tuple[bool, 
 
 # ─── Web (HTML/JS) → pywebview wrapper exe ─────────────────────────────────
 
-_WEB_LAUNCHER_TEMPLATE = '''"""HAPPY-generated launcher — wraps {html_name} with pywebview as native desktop window."""
+_WEB_LAUNCHER_TEMPLATE = '''"""Happy AI Agent-generated launcher — wraps {html_name} with pywebview as native desktop window."""
 import os
 import sys
 import webview
@@ -396,7 +406,7 @@ def _build_web_exe(files: dict, progress_cb) -> Tuple[bool, str, Optional[bytes]
             return False, "ไม่มี asset ที่ bundle ได้", None, None
 
         # Write launcher
-        title = Path(main_html).stem.replace("_", " ").replace("-", " ").title() or "HAPPY App"
+        title = Path(main_html).stem.replace("_", " ").replace("-", " ").title() or "Happy AI Agent App"
         launcher_code = _WEB_LAUNCHER_TEMPLATE.format(
             html_name=main_html,
             html_name_repr=repr(main_html),
@@ -427,7 +437,8 @@ def _build_web_exe(files: dict, progress_cb) -> Tuple[bool, str, Optional[bytes]
 
         try:
             proc = subprocess.run(
-                cmd, capture_output=True, timeout=600, text=True, cwd=str(tmp_path)
+                cmd, capture_output=True, timeout=600, text=True, cwd=str(tmp_path),
+                creationflags=_NO_WINDOW,
             )
         except subprocess.TimeoutExpired:
             return False, "Web build timeout (เกิน 10 นาที)", None, None

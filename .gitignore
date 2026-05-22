@@ -4,6 +4,12 @@
 !.streamlit/*.json
 service-account*.json
 credentials*.json
+*.key
+*.pem
+.env
+.env.*
+admin_pat.json
+auth.json
 
 # Sessions (user data)
 sessions/
@@ -58,3 +64,40 @@ ui_screenshots/
 
 # Local auth (defense in depth — real file lives in ~/.happy/)
 .happy/
+
+# Archive folder — contains old GCP service account + personal data
+archive/
+
+# QA / scratch artefacts that shouldn't ship
+happy_pid.tmp
+*.spec.bak
+ui_verify.py
+ui_verify_results.json
+qa_final.py
+test_pipeline_e2e.py
+lifecycle_test.py
+WORKIE_NOTES.md
+WEB_TEST_RESULTS.md
+HAPPY_AI_AGENT_HANDOFF.md
+HANDOFF.md
+HANDOFF_ARCHIVE_coddy1to4.md
+ONBOARD_NEW_CODDY.md
+ONBOARD_NEW_COSS.md
+app.py
+app.py.bak3
+happy_desktop.py
+streamlit_stderr.log
+streamlit_stdout.log
+installer-stderr.log
+installer-stdout.log
+se.log
+so.log
+installer-mockup.html
+
+# Old/unused inside installer/ (kept on disk, not in repo)
+installer/HAPPY.iss
+installer/license-en.txt
+installer/license-th.txt
+installer/wizard-image.bmp
+installer/wizard-small.bmp
+installer/happy.ico
