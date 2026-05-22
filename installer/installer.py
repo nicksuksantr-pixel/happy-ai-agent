@@ -372,12 +372,25 @@ class Installer:
 
             exe_path = self._find_exe()
             if exe_path:
+                # Desktop + Start menu shortcuts use the DISPLAY name so
+                # Windows Explorer reads "Happy AI Agent" instead of
+                # "HappyAIAgent". Old installs had `HappyAIAgent.lnk` —
+                # uninstall.bat removes both filenames to clean up.
                 if self.create_desktop_shortcut:
                     if progress_cb:
                         progress_cb(89, "สร้าง Desktop shortcut...")
                     self._create_shortcut(
-                        exe_path, Path.home() / "Desktop" / f"{APP_NAME}.lnk",
+                        exe_path,
+                        Path.home() / "Desktop" / f"{APP_DISPLAY_NAME}.lnk",
                     )
+                    # Also remove the legacy no-space shortcut so users
+                    # upgrading from v2.3.3 don't end up with both.
+                    legacy = Path.home() / "Desktop" / f"{APP_NAME}.lnk"
+                    if legacy.exists():
+                        try:
+                            legacy.unlink()
+                        except OSError:
+                            pass
                 if self.create_start_menu:
                     if progress_cb:
                         progress_cb(93, "เพิ่มใน Start Menu...")
@@ -385,7 +398,15 @@ class Installer:
                                   / "Microsoft" / "Windows"
                                   / "Start Menu" / "Programs")
                     start_menu.mkdir(parents=True, exist_ok=True)
-                    self._create_shortcut(exe_path, start_menu / f"{APP_NAME}.lnk")
+                    self._create_shortcut(
+                        exe_path, start_menu / f"{APP_DISPLAY_NAME}.lnk"
+                    )
+                    legacy_sm = start_menu / f"{APP_NAME}.lnk"
+                    if legacy_sm.exists():
+                        try:
+                            legacy_sm.unlink()
+                        except OSError:
+                            pass
 
             if progress_cb:
                 progress_cb(96, "ตั้งค่า uninstaller...")
@@ -422,7 +443,9 @@ echo  Closing running app...
 taskkill /F /IM {APP_EXE_NAME} >nul 2>&1
 echo  Removing shortcuts...
 del /Q "%USERPROFILE%\\Desktop\\{APP_NAME}.lnk" >nul 2>&1
+del /Q "%USERPROFILE%\\Desktop\\{APP_DISPLAY_NAME}.lnk" >nul 2>&1
 del /Q "%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\{APP_NAME}.lnk" >nul 2>&1
+del /Q "%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\{APP_DISPLAY_NAME}.lnk" >nul 2>&1
 echo  Removing registry entry...
 reg delete "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{REG_KEY_NAME}" /f >nul 2>&1
 echo.
@@ -474,6 +497,35 @@ exit
             return p
         return None
 
+    def _versioned_icon_path(self, exe_path: Path) -> Path:
+        """Copy `happy_logo.ico` to `happy_logo_v<VERSION>.ico` so the
+        Windows shell icon cache treats each install's icon as a new
+        file. Without this, the cache keeps showing the old bitmap
+        even when the .ico bytes change. (Playbook §"Windows shell
+        icon cache" / ENA Desktop v2.6.3 pattern.)
+
+        Returns the versioned path, or the original if copy fails.
+        """
+        import shutil
+        safe_ver = APP_VERSION.replace(".", "_")
+        assets_dir = exe_path.parent / "_internal" / "assets"
+        original = assets_dir / "happy_logo.ico"
+        if not original.exists():
+            # Try the un-nested layout (older PyInstaller bundles)
+            alt = exe_path.parent / "assets" / "happy_logo.ico"
+            if alt.exists():
+                original = alt
+                assets_dir = exe_path.parent / "assets"
+            else:
+                return original
+        versioned = assets_dir / f"happy_logo_v{safe_ver}.ico"
+        if not versioned.exists():
+            try:
+                shutil.copy2(original, versioned)
+            except OSError:
+                return original
+        return versioned
+
     def _create_shortcut(self, target: Path, link: Path) -> None:
         try:
             import pythoncom  # noqa: F401
@@ -482,15 +534,30 @@ exit
             sc = shell.CreateShortcut(str(link))
             sc.Targetpath = str(target)
             sc.WorkingDirectory = str(target.parent)
-            ico = target.parent / "_internal" / "assets" / "happy_logo.ico"
-            if not ico.exists():
-                ico = target.parent / "assets" / "happy_logo.ico"
+            # Versioned ico forces shell cache miss on each install.
+            ico = self._versioned_icon_path(target)
             if ico.exists():
                 sc.IconLocation = str(ico)
+            sc.Description = APP_DISPLAY_NAME
             sc.Save()
         except Exception:
             bat = link.with_suffix(".bat")
             bat.write_text(f'@echo off\nstart "" "{target}"\n', encoding="utf-8")
+
+        # Nudge Explorer's icon cache (belt-and-braces — versioned
+        # filename is the actual fix, but these hints help on some
+        # Windows builds).
+        self._refresh_shell_icon_cache()
+
+    def _refresh_shell_icon_cache(self) -> None:
+        try:
+            import ctypes
+            from ctypes import wintypes
+            shell32 = ctypes.WinDLL("shell32", use_last_error=True)
+            # SHCNE_ASSOCCHANGED = 0x08000000, SHCNF_IDLIST = 0
+            shell32.SHChangeNotify(0x08000000, 0, None, None)
+        except Exception:
+            pass
 
     def launch_app(self) -> None:
         exe = self._find_exe()
