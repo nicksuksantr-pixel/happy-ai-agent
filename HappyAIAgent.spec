@@ -38,6 +38,7 @@ hiddenimports = [
     'ui.components.output_view',
     'ui.components.page_header',
     'ui.components.pill',
+    'ui.components.placeholder_textbox',
     'ui.components.section_card',
     'ui.components.status_dot',
     # ui.pages
