@@ -753,7 +753,13 @@ class PipelineRunner:
                 )
             except Exception as e:
                 self.on_phase_error("judge", f"Judge (round {round_num})", str(e)[:200])
-                return current_code
+                # v2.4.6 fix: re-raise so the outer worker terminates
+                # the pipeline. Previously this silently returned,
+                # which made the caller continue to DevOps/Summarizer/
+                # PM Final on un-scored code — user saw "Judge: error"
+                # but DevOps still showed "done". Quality gate must
+                # actually gate.
+                raise
 
             (session_path / f"{self.phase_index+1:02d}_judge_round{round_num}.md").write_text(
                 judge_output, encoding="utf-8"
@@ -837,10 +843,15 @@ class PipelineRunner:
             except Exception as e:
                 # Fix P2.7: ใช้ _last_phase/_last_phase_label ที่ track ไว้ — ไม่ใช่ hardcode "coder"
                 self.on_phase_error(_last_phase, _last_phase_label, str(e)[:200])
-                return current_code
-        
+                # v2.4.6 fix: re-raise. A failed Coder revision OR
+                # Debugger re-check inside the Judge loop means we
+                # can't produce the next code candidate — continuing
+                # to DevOps would deploy whatever stale code remains,
+                # which is exactly the "ข้ามขั้นตอน" Nick caught.
+                raise
+
         return current_code
-    
+
     def _run_tester_loop(self, task, _unused, session_path, tester_phase):
         """Bug 13: Tester gate ก่อน Debugger+Judge — เช็คว่าโปรแกรมรันได้จริง
         ถ้า BROKEN → ส่งกลับ Coder revise → re-run Tester (max self.max_judge_loops รอบ).
@@ -863,7 +874,9 @@ class PipelineRunner:
                 )
             except Exception as e:
                 self.on_phase_error("tester", label, str(e)[:200])
-                return self.outputs.get("coder", "")
+                # v2.4.6 fix: re-raise instead of silently continuing
+                # to Debugger+Judge+DevOps on un-tested code.
+                raise
 
             self.outputs["tester"] = tester_output
             # ไฟล์ round 1 = main; รอบถัดไป save แยก (debug history)
@@ -914,7 +927,10 @@ class PipelineRunner:
                 self._delay()
             except Exception as e:
                 self.on_phase_error("coder", f"Coder tester-rev {round_num}", str(e)[:200])
-                return self.outputs.get("coder", "")
+                # v2.4.6 fix: re-raise so the outer worker can mark
+                # the run as failed instead of letting Debugger+Judge+
+                # downstream run on an un-revised Coder output.
+                raise
 
         return self.outputs.get("coder", "")
 
