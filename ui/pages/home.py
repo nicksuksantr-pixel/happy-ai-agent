@@ -19,6 +19,7 @@ from file_loader import is_supported
 from pipeline import list_sessions, load_session
 
 from ui import theme
+from ui.components.placeholder_textbox import PlaceholderTextbox
 from ui.components.status_dot import status_dot
 from ui.emoji_image import emoji_for
 
@@ -141,25 +142,30 @@ class HomePage(ctk.CTkFrame):
         ).grid(row=0, column=1, sticky="w")
 
         # The textbox is what grows when the window grows.
-        self.task_input = ctk.CTkTextbox(
+        # PlaceholderTextbox auto-hides the example on focus/keypress
+        # and restores it on focus-out when empty — replaces the
+        # previous "hard-coded example that users had to delete by
+        # hand" pattern.
+        self.task_input = PlaceholderTextbox(
             self.compose,
+            placeholder=(
+                "Describe what you want the AI team to build.\n"
+                "Example: Build a single-file HTML calculator with 0-9 "
+                "keys, +  -  ×  ÷, =, C — modern flat design, works on "
+                "mobile too."
+            ),
+            placeholder_color=theme.TEXT_DIM,
+            text_color=theme.TEXT,
             fg_color=theme.BG_INPUT,
             border_color=theme.BORDER_DIM,
             border_width=1,
             corner_radius=theme.RADIUS_CARD,
-            text_color=theme.TEXT,
             font=theme.FONT_BODY,
             wrap="word",
         )
         self.task_input.grid(row=1, column=0, sticky="nsew",
                              padx=theme.PADDING_CARD,
                              pady=(0, theme.S3))
-        self.task_input.insert(
-            "1.0",
-            "Build a single-file HTML calculator (HTML+CSS+JS in one "
-            "file) with 0-9 keys, +  -  ×  ÷, =, C. Modern flat design "
-            "that works on mobile too.",
-        )
 
         # Separator above the options strip.
         ctk.CTkFrame(
@@ -507,7 +513,10 @@ class HomePage(ctk.CTkFrame):
             )
             self.app.show_page("settings")
             return
-        task = self.task_input.get("1.0", "end").strip()
+        # get_real_text() returns "" when only the placeholder is shown,
+        # so an unedited textbox correctly trips the "empty task" guard
+        # instead of submitting the example as the user's prompt.
+        task = self.task_input.get_real_text().strip()
         if not task:
             messagebox.showwarning(
                 "Empty task",
