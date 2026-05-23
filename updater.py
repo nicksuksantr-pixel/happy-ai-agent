@@ -294,6 +294,87 @@ def check_for_update(current_version: str, timeout: float = 3.0) -> Optional[Upd
 
 # ─── Download ───
 
+def _resume_sidecar_path(dest: Path) -> Path:
+    """Sidecar that records WHICH download URL the partial file is for.
+
+    Without this guard the resume path is fundamentally unsafe: if the
+    previous attempt was for an OLDER release URL and we now poll a
+    NEWER release, the file on disk has bytes from the old asset but
+    we'd send `Range: bytes=N-` against the new URL — server returns
+    bytes [N..end] of the NEW asset and we append, producing a ZIP
+    whose header is from one release and tail from another. The
+    extractor then fails with "Bad magic number for central directory"
+    and the user sees update install silently fail forever.
+
+    This bug ate v2.3.6 → v2.4.x auto-update on Nick's machine
+    (2026-05-23). Pattern adapted from ENA Desktop v2.6.5.
+    """
+    return dest.with_suffix(dest.suffix + ".meta")
+
+
+def _validate_partial_for_url(dest: Path, url: str) -> int:
+    """If dest exists, decide whether resuming for `url` is safe.
+
+    Returns the byte offset to resume from (0 = start fresh). Side
+    effect: if the partial is for a different URL, deletes both the
+    partial and its sidecar so the caller falls back to a clean
+    full download.
+    """
+    if not dest.exists():
+        return 0
+    side = _resume_sidecar_path(dest)
+    try:
+        if side.exists():
+            meta = json.loads(side.read_text(encoding="utf-8"))
+            stored_url = str(meta.get("url", ""))
+            if stored_url and stored_url == url:
+                # Same release URL — safe to resume.
+                return dest.stat().st_size
+            _debug_log(
+                f"  partial download is for a different URL — discarding "
+                f"(stored={stored_url[:80]!r}, requested={url[:80]!r})"
+            )
+        else:
+            _debug_log("  partial download has no sidecar — discarding for safety")
+    except Exception as e:
+        _debug_log(f"  sidecar read failed ({e}) — discarding for safety")
+    # Cross-version mismatch or missing sidecar — start clean.
+    try:
+        dest.unlink(missing_ok=True)
+    except OSError:
+        pass
+    try:
+        side.unlink(missing_ok=True)
+    except OSError:
+        pass
+    return 0
+
+
+def _write_resume_sidecar(dest: Path, url: str) -> None:
+    """Mark the partial file as belonging to `url` so a later resume
+    can verify the match. Best-effort — failure is non-fatal."""
+    try:
+        side = _resume_sidecar_path(dest)
+        side.write_text(
+            json.dumps({"url": url}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+
+def _is_valid_zip(path: Path) -> bool:
+    """Cheap check: does `path` open as a valid ZIP? Used after a
+    download claims success but before we commit to the file — catches
+    cross-version Range corruption that the byte-count check misses."""
+    try:
+        import zipfile
+        with zipfile.ZipFile(path) as zf:
+            return zf.testzip() is None
+    except (zipfile.BadZipFile, OSError, Exception):
+        return False
+
+
 def download_installer(
     url: str,
     dest: Path,
@@ -304,6 +385,13 @@ def download_installer(
     attempt_timeout: float = 300.0,
 ) -> tuple:
     """Download URL → dest with retry + HTTP Range resume.
+
+    Guards against cross-version Range-resume corruption (v2.4.2 fix):
+      • Partial file is paired with a sidecar recording its source URL.
+      • Resume only happens when the recorded URL matches the request.
+      • Final ZIP is validated; corrupt downloads are wiped + retried
+        from scratch.
+
     Returns (success, message).
     """
     _debug_log(f"download_installer start: url={url} dest={dest}")
@@ -312,6 +400,11 @@ def download_installer(
     except Exception as e:
         _debug_log(f"  dest.mkdir failed: {e}")
         return False, f"Cannot create cache dir: {str(e)[:120]}"
+
+    # Cross-version safety: wipe partial files that belong to a
+    # different download URL before we ever send a Range header.
+    _validate_partial_for_url(dest, url)
+    _write_resume_sidecar(dest, url)
 
     expected_total = 0
     last_err = "unknown"
@@ -372,6 +465,26 @@ def download_installer(
                 last_err = f"truncated: {actual_size:,}/{expected_total:,} bytes"
                 continue
 
+            # Byte count is right, but bytes themselves can still be
+            # garbage if a previous attempt resumed across a release
+            # boundary that the sidecar guard missed. Cheap ZIP magic
+            # check catches the remaining cases and forces a clean
+            # retry from byte 0.
+            if dest.suffix.lower() == ".zip" and not _is_valid_zip(dest):
+                _debug_log("  download finished but ZIP is corrupt — wiping for retry")
+                try:
+                    dest.unlink(missing_ok=True)
+                    _resume_sidecar_path(dest).unlink(missing_ok=True)
+                except OSError:
+                    pass
+                last_err = "corrupt zip (bad magic / central directory)"
+                continue
+
+            # Final commit — drop the sidecar; partial is now whole.
+            try:
+                _resume_sidecar_path(dest).unlink(missing_ok=True)
+            except OSError:
+                pass
             _debug_log(f"  SUCCESS — {actual_size:,} bytes")
             return True, f"Downloaded {actual_size:,} bytes"
 
