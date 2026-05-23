@@ -34,6 +34,7 @@ hiddenimports = [
     'ui', 'ui.app', 'ui.sidebar', 'ui.theme', 'ui.emoji_image',
     # ui.components
     'ui.components',
+    'ui.components.clipboard',
     'ui.components.logo',
     'ui.components.output_view',
     'ui.components.page_header',

@@ -110,6 +110,14 @@ class AppState:
         })
 
     def auto_auth(self) -> None:
+        """Try to authenticate from the saved key on disk.
+
+        Honors format-only validation here for fast startup — the
+        EXPENSIVE check (real Gemini API ping) is deferred to
+        `verify_auth_with_api`, called from a background thread once
+        the UI is up. That way startup stays snappy AND a stale/junk
+        key on disk doesn't masquerade as "Connected" forever.
+        """
         if self.auth_ready:
             return
         key = load_api_key()
@@ -129,6 +137,26 @@ class AppState:
                 self.persist()
         except Exception:
             pass
+
+    def verify_auth_with_api(self) -> bool:
+        """Call Gemini's list_models to confirm the saved key is real.
+
+        Returns True if the key is valid. On failure, wipes the
+        client + auth_ready so the UI flips back to "Not connected"
+        and the user can paste a fresh key. Designed to be called
+        from a worker thread; only state mutation, no widget access.
+        """
+        if not self.client:
+            return False
+        try:
+            from auth import test_connection
+            ok, _msg = test_connection(self.client)
+        except Exception:
+            ok = False
+        if not ok:
+            self.client = None
+            self.auth_ready = False
+        return ok
 
 
 # ─── Root window ──────────────────────────────────────────────────────────
@@ -197,6 +225,11 @@ class HappyApp(ctk.CTk):
         # ── State ───────────────────────────────────────────────────────
         self.app_state = AppState()
         self.app_state.auto_auth()
+        # Kick off a background verification — if the saved key is junk
+        # (format passes but the API rejects it), this flips auth_ready
+        # back to False after a couple of seconds and refreshes the UI
+        # pills + Settings status so the user sees the real state.
+        self._schedule_auth_verification()
 
         # ── Layout ──────────────────────────────────────────────────────
         self.grid_columnconfigure(1, weight=1)
@@ -252,6 +285,44 @@ class HappyApp(ctk.CTk):
         self._setup_tray()
         self.bind("<Unmap>", self._on_unmap)
         self.protocol("WM_DELETE_WINDOW", self._on_user_close)
+
+    # ── Background auth verification ─────────────────────────────────────
+    def _schedule_auth_verification(self) -> None:
+        """Fire a background API ping shortly after startup. Only runs
+        when auto_auth already loaded a key — no point pinging if the
+        user hasn't connected. Fast startups feel responsive but a
+        junk key still gets caught within seconds."""
+        if not self.app_state.auth_ready:
+            return
+
+        def worker():
+            ok = self.app_state.verify_auth_with_api()
+            # State already mutated by verify_auth_with_api on failure;
+            # we just need to refresh the UI on the Tk thread. Guard
+            # against the app having been destroyed mid-verification
+            # (test runs, or user quits within ~1s of launch) — Tk's
+            # `after` raises TclError if the widget is already gone.
+            try:
+                self.after(0, lambda r=ok: self._on_auth_verified(r))
+            except Exception:
+                pass
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_auth_verified(self, ok: bool) -> None:
+        """Tk-thread callback after background API verification."""
+        try:
+            self.sidebar.refresh_auth_status()
+        except Exception:
+            pass
+        # If the settings page is currently mounted, refresh its
+        # status label too so the user immediately sees the change.
+        try:
+            settings = self.pages.get("settings")
+            if settings and hasattr(settings, "_refresh_auth_status"):
+                settings._refresh_auth_status()
+        except Exception:
+            pass
 
     # ── Window geometry persistence ──────────────────────────────────────
     def _on_window_configure(self, event) -> None:

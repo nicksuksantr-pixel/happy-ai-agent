@@ -22,6 +22,7 @@ from auth import (
 
 from core import config
 from ui import theme
+from ui.components.clipboard import enable_clipboard_shortcuts
 from ui.components.page_header import page_header
 from ui.components.section_card import section_card
 from ui.components.status_dot import status_dot
@@ -73,13 +74,25 @@ class SettingsPage(ctk.CTkFrame):
         )
         self.auth_status_label.grid(row=0, column=1, sticky="ew")
 
+        # Separate hint label above the input. CTkEntry's built-in
+        # `placeholder_text` interacts badly with `show="*"`: after
+        # typing a value and then re-clicking the field, CTk's
+        # placeholder-activation logic can incorrectly fire and wipe
+        # the entered key. We render the hint as a dim label instead.
+        ctk.CTkLabel(
+            c, anchor="w", text_color=theme.TEXT_DIM,
+            font=theme.FONT_TINY,
+            text="Paste your API key below (starts with AIzaSy…)",
+        ).grid(row=1, column=0, sticky="w", pady=(0, 4))
+
         # Input row
         ir = ctk.CTkFrame(c, fg_color="transparent")
-        ir.grid(row=1, column=0, sticky="ew", pady=2)
+        ir.grid(row=2, column=0, sticky="ew", pady=2)
         ir.grid_columnconfigure(0, weight=1)
         self.api_key_input = ctk.CTkEntry(
             ir,
-            placeholder_text="AIzaSy...   (paste API key)",
+            # No placeholder_text — see the label above + the clear
+            # behavior CTk gives the field when show="*" is set.
             show="*",
             fg_color=theme.BG_INPUT,
             border_color=theme.BORDER_DIM,
@@ -88,6 +101,10 @@ class SettingsPage(ctk.CTkFrame):
             height=38,
         )
         self.api_key_input.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        # Thai-keyboard-safe Ctrl+V/C/X/A + right-click menu. Without
+        # this, users typing in a non-Latin IME can't paste because
+        # the Tk keysym fires as the local-script character, not "v".
+        enable_clipboard_shortcuts(self.api_key_input)
         ctk.CTkButton(
             ir, text="Save & connect",
             fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
@@ -107,11 +124,11 @@ class SettingsPage(ctk.CTkFrame):
             command=lambda: webbrowser.open(
                 "https://aistudio.google.com/apikey"
             ),
-        ).grid(row=2, column=0, sticky="w", pady=(8, 0))
+        ).grid(row=3, column=0, sticky="w", pady=(8, 0))
 
         # Action row
         ar = ctk.CTkFrame(c, fg_color="transparent")
-        ar.grid(row=3, column=0, sticky="ew", pady=(10, 0))
+        ar.grid(row=4, column=0, sticky="ew", pady=(10, 0))
         ar.grid_columnconfigure((0, 1), weight=1)
         ctk.CTkButton(
             ar, text="Test connection",
