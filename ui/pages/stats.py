@@ -286,14 +286,19 @@ class StatsPage(ctk.CTkFrame):
             text=self._format_secs(avg_secs) if avg_secs else "—"
         )
 
-        # Quota card (today's runs vs RPD ceiling).
+        # Quota card (today's runs vs RPD ceiling). Numbers come from
+        # core.quotas, keyed off the user's currently-picked model —
+        # picking a higher-tier model should immediately raise the
+        # bar's ceiling, not still claim flash-lite's 500/day.
+        from core.quotas import get_quota
+        q = get_quota(self.app.app_state.model)
         self._quota_label.configure(
-            text=f"{today_count} runs today  /  {config.QUOTA_RPD} free-tier ceiling"
+            text=f"{today_count} runs today  /  {q.rpd} free-tier ceiling"
         )
-        self._quota_bar.set(min(1.0, today_count / config.QUOTA_RPD))
+        self._quota_bar.set(min(1.0, today_count / max(1, q.rpd)))
         self._quota_caption.configure(
-            text=f"RPM cap {config.QUOTA_RPM}   ·   "
-                 f"TPM cap {config.QUOTA_TPM:,}   ·   "
+            text=f"RPM cap {q.rpm}   ·   "
+                 f"TPM cap {q.tpm:,}   ·   "
                  f"resets at midnight Pacific time"
         )
 

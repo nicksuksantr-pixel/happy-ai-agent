@@ -259,13 +259,24 @@ class _TPMTracker:
     iteration" if the worker happens to append at exactly the wrong tick.
     A short lock on every mutation + every read fixes it; contention is
     negligible (calls are ~10s apart).
+
+    TPM ceiling is per-model (v2.4.5): PipelineRunner passes the
+    user-selected model in, the tracker looks up the matching quota
+    from core.quotas, and the throttle/back-off logic uses THAT
+    number instead of a hard-coded 250 000 (which was right for
+    flash-lite but wrong for pro tiers).
     """
     import threading as _threading
-    # Free tier of gemini-3.1-flash-lite-preview: TPM = 250,000 combined (input + output)
-    TPM_CEILING = 250_000
     SAFETY_THRESHOLD = 0.85  # ถ้า usage ใน 60s > 85% ของ ceiling → sleep
 
-    def __init__(self):
+    def __init__(self, model: str = ""):
+        # Resolve ceiling once at construction. If model is unknown
+        # we fall back to DEFAULT_QUOTA which is conservative.
+        try:
+            from core.quotas import get_quota
+            self.TPM_CEILING = get_quota(model).tpm
+        except Exception:
+            self.TPM_CEILING = 250_000
         self._events = []  # list[tuple(ts, total_tokens)]
         self._lock = self._threading.Lock()
 
@@ -586,8 +597,10 @@ class PipelineRunner:
         self.phase_index = 0
         # Token monitoring: ทุก call จะ append ที่นี่ — read โดย run() เพื่อ store ลง meta
         self.token_log = []
-        # Adaptive TPM throttling: บันทึก rolling 60s window of token usage
-        self._tpm = _TPMTracker()
+        # Adaptive TPM throttling: บันทึก rolling 60s window of token usage.
+        # Pass the model name so the tracker picks the right TPM ceiling
+        # (250K for flash-lite, 125K for pro-preview, 1M for 2.0-flash, …).
+        self._tpm = _TPMTracker(model=model)
         # Estimated input tokens ของ last call (สำหรับ TPM projection ก่อน call ถัดไป)
         self._last_input_estimate = 0
     

@@ -99,7 +99,15 @@ class RunningPage(ctk.CTkFrame):
         self.stop_btn.pack(side="left")
 
         # ── Rate limiter card (TPM watcher + RPD counter) ───────────────
-        from core import config as _cfg
+        # All three numbers (TPM, RPM, RPD) come from core.quotas now —
+        # each Gemini model has a different free-tier ceiling, and
+        # hard-coding the flash-lite 250K/15/500 numbers everywhere
+        # caused them to lie when the user picked any other model.
+        # Initial labels use the current model's quota; refresh_rate_
+        # limiter() reads it again on every tick so model changes
+        # mid-run still update the bar.
+        from core.quotas import get_quota
+        q = get_quota(self.app.app_state.model)
         rate = ctk.CTkFrame(
             outer, fg_color=theme.BG_CARD,
             border_color=theme.BORDER_DIM, border_width=1,
@@ -121,7 +129,7 @@ class RunningPage(ctk.CTkFrame):
             anchor="w",
         ).grid(row=0, column=0, sticky="ew")
         self.tpm_label = ctk.CTkLabel(
-            tpm_box, text=f"0 / {_cfg.QUOTA_TPM:,}",
+            tpm_box, text=f"0 / {q.tpm:,}",
             font=(theme.FAMILY_MONO, 12, "bold"),
             text_color=theme.TEXT_SUB, anchor="w",
         )
@@ -145,7 +153,7 @@ class RunningPage(ctk.CTkFrame):
             anchor="w",
         ).grid(row=0, column=0, sticky="ew")
         self.rpd_label = ctk.CTkLabel(
-            rpd_box, text=f"0  ·  RPD cap {_cfg.QUOTA_RPD}/day",
+            rpd_box, text=f"0  ·  RPD cap {q.rpd}/day",
             font=(theme.FAMILY_MONO, 12, "bold"),
             text_color=theme.TEXT_SUB, anchor="w",
         )
@@ -153,7 +161,7 @@ class RunningPage(ctk.CTkFrame):
                             pady=(theme.S1, theme.S2))
         self.rpd_caption = ctk.CTkLabel(
             rpd_box,
-            text=f"RPM cap {_cfg.QUOTA_RPM}   adaptive throttle on",
+            text=f"RPM cap {q.rpm}   adaptive throttle on",
             font=theme.FONT_TINY, text_color=theme.TEXT_DIM,
             anchor="w",
         )
@@ -271,18 +279,26 @@ class RunningPage(ctk.CTkFrame):
         `app_state.pipeline_runner`. Its `_tpm` is the rolling-60s tracker;
         `token_log` is the per-call usage list — we count its length for
         the requests counter.
+
+        Quota numbers refresh from the current model on every tick so
+        the labels stay accurate even if the user picks a different
+        model after starting a run (the live ceiling is what the
+        PipelineRunner enforces, but the UI should always reflect what
+        the user picked LAST).
         """
-        from core import config as _cfg
+        from core.quotas import get_quota
         runner = getattr(self.app.app_state, "pipeline_runner", None)
         if runner is None:
             return
+
+        q = get_quota(self.app.app_state.model)
 
         # TPM rolling window.
         try:
             current = runner._tpm.current_tpm()
         except Exception:
             current = 0
-        ceiling = max(1, _cfg.QUOTA_TPM)
+        ceiling = max(1, q.tpm)
         ratio = min(1.0, current / ceiling)
         self.tpm_bar.set(ratio)
         self.tpm_label.configure(text=f"{current:,} / {ceiling:,}")
@@ -297,13 +313,16 @@ class RunningPage(ctk.CTkFrame):
             self.tpm_bar.configure(progress_color=theme.ACCENT_3)
             self.tpm_label.configure(text_color=theme.TEXT_SUB)
 
-        # Request count this run.
+        # Request count this run + RPD + RPM caps (live with model).
         try:
             req_count = len(runner.token_log)
         except Exception:
             req_count = 0
         self.rpd_label.configure(
-            text=f"{req_count}  ·  RPD cap {_cfg.QUOTA_RPD}/day"
+            text=f"{req_count}  ·  RPD cap {q.rpd}/day"
+        )
+        self.rpd_caption.configure(
+            text=f"RPM cap {q.rpm}   adaptive throttle on"
         )
 
     def destroy(self) -> None:

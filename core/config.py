@@ -120,7 +120,11 @@ MIN_H = 560
 SIDEBAR_W = 220
 
 
-# ─── Free-tier quota reference (from MASTER.md) ───────────────────────────
+# ─── Free-tier quota reference ────────────────────────────────────────────
+# DEPRECATED constants — kept for any third-party code that imported them.
+# Real quota lookups are per-model now; see `core.quotas.get_quota(model)`.
+# These values match the DEFAULT model (gemini-3.1-flash-lite-preview);
+# any UI that picks a different model MUST go through core.quotas.
 QUOTA_RPM = 15
 QUOTA_TPM = 250_000
 QUOTA_RPD = 500

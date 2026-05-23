@@ -29,7 +29,7 @@ binaries = []
 # doesn't quietly drop a module from the bundle.
 hiddenimports = [
     # core
-    'core', 'core.config', 'core.persistence',
+    'core', 'core.config', 'core.persistence', 'core.quotas',
     # ui root
     'ui', 'ui.app', 'ui.sidebar', 'ui.theme', 'ui.emoji_image',
     # ui.components

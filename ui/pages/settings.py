@@ -183,12 +183,15 @@ class SettingsPage(ctk.CTkFrame):
         )
         self.model_menu.grid(row=0, column=0, sticky="ew", pady=2)
 
-        ctk.CTkLabel(
+        # Free-tier label updates live to the picked model — no more
+        # claiming RPD 500 while the user has gemini-2.5-pro selected
+        # (real cap there is 100/day).
+        self._model_quota_label = ctk.CTkLabel(
             c, anchor="w", text_color=theme.TEXT_DIM,
             font=theme.FONT_TINY,
-            text="Recommended: gemini-3.1-flash-lite-preview  "
-                 f"(free tier: RPD {config.QUOTA_RPD}, 65K output tokens)",
-        ).grid(row=1, column=0, sticky="ew", pady=(6, 0))
+            text=self._build_model_quota_text(self.app.app_state.model),
+        )
+        self._model_quota_label.grid(row=1, column=0, sticky="ew", pady=(6, 0))
 
         r = ctk.CTkFrame(c, fg_color="transparent")
         r.grid(row=2, column=0, sticky="ew", pady=(10, 0))
@@ -480,9 +483,25 @@ class SettingsPage(ctk.CTkFrame):
         self.app.sidebar.refresh_auth_status()
 
     # ── Model handlers ───────────────────────────────────────────────────
+    def _build_model_quota_text(self, model: str) -> str:
+        """One-liner shown under the model dropdown — picks numbers from
+        core.quotas so the text matches the actual free-tier limit for
+        whatever model is selected."""
+        from core.quotas import get_quota
+        q = get_quota(model)
+        return (f"{model or '(none)'}  ·  free tier: "
+                f"RPM {q.rpm}  ·  TPM {q.tpm:,}  ·  RPD {q.rpd}/day")
+
     def _on_model_change(self, value: str) -> None:
         self.app.app_state.model = value
         self.app.app_state.persist()
+        # Refresh the quota hint so it reflects the new model's limits.
+        try:
+            self._model_quota_label.configure(
+                text=self._build_model_quota_text(value)
+            )
+        except Exception:
+            pass
 
     def _refresh_models(self) -> None:
         if not self.app.app_state.client:
