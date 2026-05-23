@@ -79,11 +79,18 @@ class SettingsPage(ctk.CTkFrame):
         # typing a value and then re-clicking the field, CTk's
         # placeholder-activation logic can incorrectly fire and wipe
         # the entered key. We render the hint as a dim label instead.
-        ctk.CTkLabel(
+        #
+        # v2.4.7: this label is now state-aware. When a key is already
+        # saved, the input is empty (by design — we don't pre-fill
+        # secrets) but the hint says "paste a NEW key to replace…",
+        # so the user isn't confused by an empty field while the
+        # status row says Connected.
+        self.key_hint_label = ctk.CTkLabel(
             c, anchor="w", text_color=theme.TEXT_DIM,
             font=theme.FONT_TINY,
             text="Paste your API key below (starts with AIzaSy…)",
-        ).grid(row=1, column=0, sticky="w", pady=(0, 4))
+        )
+        self.key_hint_label.grid(row=1, column=0, sticky="w", pady=(0, 4))
 
         # Input row
         ir = ctk.CTkFrame(c, fg_color="transparent")
@@ -252,8 +259,11 @@ class SettingsPage(ctk.CTkFrame):
             text=f"Phase delay: {self.app.app_state.delay}s",
         )
         self.delay_label.grid(row=2, column=0, sticky="ew", pady=(6, 0))
+        # v2.4.7: min lowered 30→5s per Nick. Power users on paid
+        # tier (or testing) want to burn through phases quickly.
+        # Step is 5 seconds: 5/10/15/.../180.
         self.delay_slider = ctk.CTkSlider(
-            c, from_=30, to=180, number_of_steps=30,
+            c, from_=5, to=180, number_of_steps=35,
             command=self._on_delay_change,
             button_color=theme.ACCENT,
             button_hover_color=theme.ACCENT_HOVER,
@@ -263,7 +273,7 @@ class SettingsPage(ctk.CTkFrame):
         self.delay_slider.set(self.app.app_state.delay)
         self.delay_slider.grid(row=3, column=0, sticky="ew", pady=(2, 0))
         ctk.CTkLabel(
-            c, text="Recommended: 45s — avoids the TPM ceiling on free tier",
+            c, text="Recommended: 45s on free tier · 5–15s on paid tier",
             anchor="w", text_color=theme.TEXT_DIM, font=theme.FONT_TINY,
         ).grid(row=4, column=0, sticky="w", pady=(2, 8))
 
@@ -398,12 +408,30 @@ class SettingsPage(ctk.CTkFrame):
                 text_color=theme.ONLINE,
             )
             self._auth_dot.configure(fg_color=theme.ONLINE)
+            # v2.4.7: when a key is already saved, the input field is
+            # intentionally empty (we never pre-fill secrets), so the
+            # hint must say "paste a NEW key to replace…" — otherwise
+            # the user sees an empty field next to a green "Connected"
+            # and can't tell whether their key is actually stored.
+            try:
+                self.key_hint_label.configure(
+                    text=f"Paste a NEW key below to replace {masked}  "
+                         f"·  leave blank to keep the current one"
+                )
+            except Exception:
+                pass
         else:
             self.auth_status_label.configure(
                 text="Not connected. Paste an API key below.",
                 text_color=theme.TEXT_SUB,
             )
             self._auth_dot.configure(fg_color=theme.OFFLINE)
+            try:
+                self.key_hint_label.configure(
+                    text="Paste your API key below (starts with AIzaSy…)"
+                )
+            except Exception:
+                pass
 
     def _save_api_key(self) -> None:
         key = self.api_key_input.get().strip()
