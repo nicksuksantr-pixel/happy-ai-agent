@@ -62,9 +62,18 @@ class SettingsPage(ctk.CTkFrame):
                           accent=theme.ACCENT, emoji="🔐",
                           row=row, pady=(4, 10))
 
-        # Status row with dot
+        # v2.4.8: edit-mode toggle. When a key is saved and the user
+        # isn't actively replacing it, the input row + Save button are
+        # hidden and a big "Saved key" card is shown instead — so the
+        # field that used to look empty (and confused Nick into
+        # thinking no key was stored) is replaced with an unambiguous
+        # visual confirmation. Clicking "Change key" flips the toggle
+        # and reveals the input + a Cancel button.
+        self._editing_key: bool = False
+
+        # Status row with dot (always visible) -----------------------------
         sr = ctk.CTkFrame(c, fg_color="transparent")
-        sr.grid(row=0, column=0, sticky="ew", pady=(0, 12))
+        sr.grid(row=0, column=0, sticky="ew", pady=(0, 10))
         sr.grid_columnconfigure(1, weight=1)
         self._auth_dot = status_dot(sr, color=theme.OFFLINE, size=10)
         self._auth_dot.grid(row=0, column=0, padx=(0, 10))
@@ -74,32 +83,59 @@ class SettingsPage(ctk.CTkFrame):
         )
         self.auth_status_label.grid(row=0, column=1, sticky="ew")
 
-        # Separate hint label above the input. CTkEntry's built-in
-        # `placeholder_text` interacts badly with `show="*"`: after
-        # typing a value and then re-clicking the field, CTk's
-        # placeholder-activation logic can incorrectly fire and wipe
-        # the entered key. We render the hint as a dim label instead.
-        #
-        # v2.4.7: this label is now state-aware. When a key is already
-        # saved, the input is empty (by design — we don't pre-fill
-        # secrets) but the hint says "paste a NEW key to replace…",
-        # so the user isn't confused by an empty field while the
-        # status row says Connected.
+        # ── ROW 1: "Saved key" card (visible only when connected + not editing)
+        self.saved_key_card = ctk.CTkFrame(
+            c, fg_color=theme.BG_INPUT,
+            border_color=theme.ONLINE, border_width=1,
+            corner_radius=theme.RADIUS_CARD,
+        )
+        self.saved_key_card.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(
+            self.saved_key_card, text="🔑",
+            font=(theme.FAMILY, 18),
+        ).grid(row=0, column=0, padx=(14, 10), pady=12, sticky="w")
+        sk_text = ctk.CTkFrame(self.saved_key_card, fg_color="transparent")
+        sk_text.grid(row=0, column=1, sticky="ew", pady=10)
+        sk_text.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            sk_text, text="API KEY SAVED ON THIS MACHINE",
+            font=theme.FONT_OVERLINE, text_color=theme.TEXT_DIM,
+            anchor="w",
+        ).grid(row=0, column=0, sticky="ew")
+        self.saved_key_label = ctk.CTkLabel(
+            sk_text, text="",
+            font=(theme.FAMILY_MONO, 13, "bold"),
+            text_color=theme.ONLINE, anchor="w",
+        )
+        self.saved_key_label.grid(row=1, column=0, sticky="ew",
+                                   pady=(2, 0))
+        self.change_key_btn = ctk.CTkButton(
+            self.saved_key_card, text="Change key",
+            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
+            text_color="white",
+            font=theme.FONT_BODY_BOLD,
+            height=34, width=120,
+            corner_radius=theme.RADIUS_BUTTON,
+            command=self._enter_edit_mode,
+        )
+        self.change_key_btn.grid(row=0, column=2, padx=(8, 12), pady=10)
+        # Gridded-in on demand by _refresh_auth_status.
+
+        # ── ROW 1 alt: hint label (visible when entering a key) ───────────
+        # Same widget as v2.4.7; just promoted to the "edit-mode" slot.
         self.key_hint_label = ctk.CTkLabel(
             c, anchor="w", text_color=theme.TEXT_DIM,
             font=theme.FONT_TINY,
             text="Paste your API key below (starts with AIzaSy…)",
         )
-        self.key_hint_label.grid(row=1, column=0, sticky="w", pady=(0, 4))
 
-        # Input row
-        ir = ctk.CTkFrame(c, fg_color="transparent")
-        ir.grid(row=2, column=0, sticky="ew", pady=2)
-        ir.grid_columnconfigure(0, weight=1)
+        # ── ROW 2: input row (visible when not connected OR editing) ──────
+        self.input_row = ctk.CTkFrame(c, fg_color="transparent")
+        self.input_row.grid_columnconfigure(0, weight=1)
         self.api_key_input = ctk.CTkEntry(
-            ir,
-            # No placeholder_text — see the label above + the clear
-            # behavior CTk gives the field when show="*" is set.
+            self.input_row,
+            # No placeholder_text — its interaction with show="*"
+            # used to wipe typed keys on re-focus (v2.4.3 bug).
             show="*",
             fg_color=theme.BG_INPUT,
             border_color=theme.BORDER_DIM,
@@ -108,20 +144,31 @@ class SettingsPage(ctk.CTkFrame):
             height=38,
         )
         self.api_key_input.grid(row=0, column=0, sticky="ew", padx=(0, 8))
-        # Thai-keyboard-safe Ctrl+V/C/X/A + right-click menu. Without
-        # this, users typing in a non-Latin IME can't paste because
-        # the Tk keysym fires as the local-script character, not "v".
+        # Thai-keyboard-safe Ctrl+V/C/X/A + right-click menu.
         enable_clipboard_shortcuts(self.api_key_input)
         ctk.CTkButton(
-            ir, text="Save & connect",
+            self.input_row, text="Save & connect",
             fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
             text_color="white",
             font=theme.FONT_BODY_BOLD,
-            height=38, width=160,
+            height=38, width=150,
             corner_radius=theme.RADIUS_BUTTON,
             command=self._save_api_key,
-        ).grid(row=0, column=1)
+        ).grid(row=0, column=1, padx=(0, 6))
+        # Cancel button — only visible while editing an existing key.
+        self.cancel_change_btn = ctk.CTkButton(
+            self.input_row, text="Cancel",
+            fg_color=theme.BG_CARD_HOVER, text_color=theme.TEXT_SUB,
+            border_width=1, border_color=theme.BORDER,
+            hover_color=theme.BORDER,
+            font=theme.FONT_BODY,
+            height=38, width=90,
+            corner_radius=theme.RADIUS_BUTTON,
+            command=self._exit_edit_mode,
+        )
+        # Gridded-in on demand.
 
+        # ── ROW 3: "Get a free key" link (always) ─────────────────────────
         ctk.CTkButton(
             c, text="Get a free API key at AI Studio  ->",
             fg_color="transparent",
@@ -133,7 +180,7 @@ class SettingsPage(ctk.CTkFrame):
             ),
         ).grid(row=3, column=0, sticky="w", pady=(8, 0))
 
-        # Action row
+        # ── ROW 4: action row (always) ────────────────────────────────────
         ar = ctk.CTkFrame(c, fg_color="transparent")
         ar.grid(row=4, column=0, sticky="ew", pady=(10, 0))
         ar.grid_columnconfigure((0, 1), weight=1)
@@ -399,8 +446,16 @@ class SettingsPage(ctk.CTkFrame):
 
     # ── Auth handlers ────────────────────────────────────────────────────
     def _refresh_auth_status(self) -> None:
+        """Update the status row text + swap auth-card layout between
+        "saved-key card" (connected + not editing) and "input row"
+        (disconnected OR editing).
+        """
         s = self.app.app_state
-        if s.auth_ready:
+        is_connected = s.auth_ready
+        is_editing = getattr(self, "_editing_key", False)
+
+        # ── Status row (always) ───────────────────────────────────────
+        if is_connected:
             k = s.api_key
             masked = f"{k[:6]}...{k[-4:]}" if len(k) > 12 else "***"
             self.auth_status_label.configure(
@@ -408,16 +463,10 @@ class SettingsPage(ctk.CTkFrame):
                 text_color=theme.ONLINE,
             )
             self._auth_dot.configure(fg_color=theme.ONLINE)
-            # v2.4.7: when a key is already saved, the input field is
-            # intentionally empty (we never pre-fill secrets), so the
-            # hint must say "paste a NEW key to replace…" — otherwise
-            # the user sees an empty field next to a green "Connected"
-            # and can't tell whether their key is actually stored.
+            # Also populate the big card label (only visible when
+            # `saved_key_card` is gridded in below).
             try:
-                self.key_hint_label.configure(
-                    text=f"Paste a NEW key below to replace {masked}  "
-                         f"·  leave blank to keep the current one"
-                )
+                self.saved_key_label.configure(text=masked)
             except Exception:
                 pass
         else:
@@ -426,12 +475,80 @@ class SettingsPage(ctk.CTkFrame):
                 text_color=theme.TEXT_SUB,
             )
             self._auth_dot.configure(fg_color=theme.OFFLINE)
+
+        # ── Layout swap ───────────────────────────────────────────────
+        # State A: connected + NOT editing  →  show big "Saved key" card,
+        #                                        hide hint + input row
+        # State B: disconnected OR editing  →  show hint + input row,
+        #                                        hide saved-key card
+        if is_connected and not is_editing:
             try:
-                self.key_hint_label.configure(
-                    text="Paste your API key below (starts with AIzaSy…)"
+                self.saved_key_card.grid(
+                    row=1, column=0, sticky="ew", pady=(0, 6)
                 )
+                self.key_hint_label.grid_remove()
+                self.input_row.grid_remove()
+                self.cancel_change_btn.grid_remove()
             except Exception:
                 pass
+        else:
+            try:
+                self.saved_key_card.grid_remove()
+                # Hint text differs depending on whether we're entering
+                # a first-time key or replacing one.
+                if is_editing and is_connected:
+                    k = s.api_key
+                    m = f"{k[:6]}...{k[-4:]}" if len(k) > 12 else "***"
+                    self.key_hint_label.configure(
+                        text=f"Paste a NEW key to replace {m}  "
+                             f"·  click Cancel to keep the current one"
+                    )
+                else:
+                    self.key_hint_label.configure(
+                        text="Paste your API key below (starts with AIzaSy…)"
+                    )
+                self.key_hint_label.grid(
+                    row=1, column=0, sticky="w", pady=(0, 4)
+                )
+                self.input_row.grid(
+                    row=2, column=0, sticky="ew", pady=2
+                )
+                # Cancel button: only shown when leaving edit-mode
+                # without saving makes sense — i.e. user already has a
+                # connected key and is mid-edit. For a fresh sign-in
+                # there's nothing to cancel back to.
+                if is_editing:
+                    self.cancel_change_btn.grid(
+                        row=0, column=2, padx=(0, 0)
+                    )
+                else:
+                    self.cancel_change_btn.grid_remove()
+            except Exception:
+                pass
+
+    def _enter_edit_mode(self) -> None:
+        """Flip the auth card into "paste a new key" mode + focus the
+        input. Triggered by the Change-key button on the saved-key card."""
+        self._editing_key = True
+        try:
+            self.api_key_input.delete(0, "end")
+        except Exception:
+            pass
+        self._refresh_auth_status()
+        try:
+            self.api_key_input.focus_set()
+        except Exception:
+            pass
+
+    def _exit_edit_mode(self) -> None:
+        """Cancel an in-progress key change. Discards whatever was
+        typed and returns to the saved-key card view."""
+        self._editing_key = False
+        try:
+            self.api_key_input.delete(0, "end")
+        except Exception:
+            pass
+        self._refresh_auth_status()
 
     def _save_api_key(self) -> None:
         key = self.api_key_input.get().strip()
@@ -471,9 +588,12 @@ class SettingsPage(ctk.CTkFrame):
         except Exception:
             pass
         self.app.app_state.persist()
+        # Successful save: clear input + exit edit mode so the big
+        # "Saved key" card replaces the input row.
+        self._editing_key = False
+        self.api_key_input.delete(0, "end")
         self._refresh_auth_status()
         self.app.sidebar.refresh_auth_status()
-        self.api_key_input.delete(0, "end")
         messagebox.showinfo(
             "Connected",
             "Saved. Happy AI Agent will auto-login next time.",
@@ -507,6 +627,10 @@ class SettingsPage(ctk.CTkFrame):
         self.app.app_state.api_key = ""
         self.app.app_state.auth_ready = False
         self.app.app_state.available_models = []
+        # After logout the input row should re-appear (not the saved-
+        # key card). Edit mode flag doesn't matter once auth_ready is
+        # False, but reset it for cleanliness.
+        self._editing_key = False
         self._refresh_auth_status()
         self.app.sidebar.refresh_auth_status()
 
