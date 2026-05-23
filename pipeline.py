@@ -260,25 +260,39 @@ class _TPMTracker:
     A short lock on every mutation + every read fixes it; contention is
     negligible (calls are ~10s apart).
 
-    TPM ceiling is per-model (v2.4.5): PipelineRunner passes the
-    user-selected model in, the tracker looks up the matching quota
-    from core.quotas, and the throttle/back-off logic uses THAT
-    number instead of a hard-coded 250 000 (which was right for
-    flash-lite but wrong for pro tiers).
+    TPM ceiling is per-model and **resolved at every check** (v2.5.0):
+    PipelineRunner passes a `get_model` callable in so the user can
+    switch models mid-run (e.g. flash-lite → 2.5-pro for the heavy
+    Coder phase). Previously the ceiling was frozen at runner construction
+    so a mid-run model swap silently kept the old TPM cap.
     """
     import threading as _threading
     SAFETY_THRESHOLD = 0.85  # ถ้า usage ใน 60s > 85% ของ ceiling → sleep
+    _FALLBACK_TPM = 250_000
 
-    def __init__(self, model: str = ""):
-        # Resolve ceiling once at construction. If model is unknown
-        # we fall back to DEFAULT_QUOTA which is conservative.
-        try:
-            from core.quotas import get_quota
-            self.TPM_CEILING = get_quota(model).tpm
-        except Exception:
-            self.TPM_CEILING = 250_000
+    def __init__(self, get_model: Callable[[], str] = None,
+                 model: str = ""):
+        # Accept either a live callable (preferred) or a static string
+        # (back-compat). Static path wraps the string in a constant
+        # closure so the rest of the class can always call `_get_model()`.
+        if get_model is None:
+            _captured = model
+            self._get_model = (lambda: _captured)
+        else:
+            self._get_model = get_model
         self._events = []  # list[tuple(ts, total_tokens)]
         self._lock = self._threading.Lock()
+
+    @property
+    def TPM_CEILING(self) -> int:
+        """Resolve the current model's TPM ceiling at the time of the
+        call. Bare-fallback to 250 000 if quota lookup raises (e.g.
+        circular import during teardown)."""
+        try:
+            from core.quotas import get_quota
+            return int(get_quota(self._get_model()).tpm)
+        except Exception:
+            return self._FALLBACK_TPM
 
     def _prune_locked(self):
         """Caller must hold self._lock."""
@@ -577,12 +591,23 @@ def parse_tester_decision(output: str) -> tuple:
     return playable, instructions
 
 class PipelineRunner:
-    def __init__(self, client, model, delay=10, judge_threshold=85, max_judge_loops=5,
+    def __init__(self, client, model=None, delay=10, judge_threshold=85,
+                 max_judge_loops=5,
                  mode="quick", attachments=None,
                  on_phase_start=None, on_phase_complete=None,
-                 on_phase_error=None, on_judge_round=None, should_stop=None):
+                 on_phase_error=None, on_judge_round=None, should_stop=None,
+                 get_model: Optional[Callable[[], str]] = None):
         self.client = client
-        self.model = model
+        # v2.5.0: model is read live so the user can switch mid-run
+        # (e.g. flash-lite for cheap planners → 2.5-pro for Coder).
+        # Caller passes `get_model=lambda: app_state.model` so every
+        # API call resolves the current pick. Backward-compat: a static
+        # `model=` string still works (wrapped in a constant closure).
+        if get_model is None:
+            _captured = model or ""
+            self._get_model = (lambda: _captured)
+        else:
+            self._get_model = get_model
         self.delay = delay
         self.judge_threshold = judge_threshold
         self.max_judge_loops = max_judge_loops
@@ -598,11 +623,21 @@ class PipelineRunner:
         # Token monitoring: ทุก call จะ append ที่นี่ — read โดย run() เพื่อ store ลง meta
         self.token_log = []
         # Adaptive TPM throttling: บันทึก rolling 60s window of token usage.
-        # Pass the model name so the tracker picks the right TPM ceiling
-        # (250K for flash-lite, 125K for pro-preview, 1M for 2.0-flash, …).
-        self._tpm = _TPMTracker(model=model)
+        # v2.5.0: tracker reads the live model via the same callable
+        # so its TPM ceiling re-adapts when the user switches model
+        # mid-run. Previously it was frozen at runner construction.
+        self._tpm = _TPMTracker(get_model=self._get_model)
         # Estimated input tokens ของ last call (สำหรับ TPM projection ก่อน call ถัดไป)
         self._last_input_estimate = 0
+
+    @property
+    def model(self) -> str:
+        """Live model lookup. Every `self.model` reference in this class
+        becomes a fresh read of the user's current pick (Settings page
+        writes `app_state.model`, runner reads it back through the
+        callable injected at construction). Letting it stay stale would
+        silently lock the run to whatever was selected at start time."""
+        return self._get_model() or ""
     
     def _check_stop(self):
         return self.should_stop()

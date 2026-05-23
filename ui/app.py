@@ -911,9 +911,15 @@ class HappyApp(ctk.CTk):
 
         # Build the runner OUTSIDE the worker thread so the Running page
         # can read live counters (runner._tpm, runner.token_log).
+        # v2.5.0: pass `get_model` instead of a frozen `model=` so each
+        # API call inside the runner resolves the user's CURRENT pick.
+        # Without this, the Settings dropdown looked changeable mid-run
+        # but the runner kept calling the originally-selected model
+        # for the rest of the pipeline. (Settings page already persists
+        # `app_state.model` on each dropdown change.)
         runner = PipelineRunner(
             client=self.app_state.client,
-            model=self.app_state.model,
+            get_model=lambda: self.app_state.model,
             delay=settings["delay"],
             judge_threshold=settings["judge_threshold"],
             max_judge_loops=settings["max_judge_loops"],

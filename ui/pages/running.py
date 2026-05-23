@@ -106,6 +106,11 @@ class RunningPage(ctk.CTkFrame):
         # Initial labels use the current model's quota; refresh_rate_
         # limiter() reads it again on every tick so model changes
         # mid-run still update the bar.
+        # v2.5.0: numbers are now framed as estimates ("~N") with a
+        # caption pointing the user to Google's authoritative limits
+        # page. The static table in core.quotas is best-effort —
+        # Google rotates free-tier ceilings without bumping any
+        # version, so claiming a hard "RPD cap 1000/day" is dishonest.
         from core.quotas import get_quota
         q = get_quota(self.app.app_state.model)
         rate = ctk.CTkFrame(
@@ -153,7 +158,7 @@ class RunningPage(ctk.CTkFrame):
             anchor="w",
         ).grid(row=0, column=0, sticky="ew")
         self.rpd_label = ctk.CTkLabel(
-            rpd_box, text=f"0  ·  RPD cap {q.rpd}/day",
+            rpd_box, text=f"0  ·  free tier ~{q.rpd}/day (est)",
             font=(theme.FAMILY_MONO, 12, "bold"),
             text_color=theme.TEXT_SUB, anchor="w",
         )
@@ -161,7 +166,8 @@ class RunningPage(ctk.CTkFrame):
                             pady=(theme.S1, theme.S2))
         self.rpd_caption = ctk.CTkLabel(
             rpd_box,
-            text=f"RPM cap {q.rpm}   adaptive throttle on",
+            text=f"~RPM {q.rpm} · adaptive throttle on · "
+                 f"verify at ai.google.dev",
             font=theme.FONT_TINY, text_color=theme.TEXT_DIM,
             anchor="w",
         )
@@ -319,10 +325,11 @@ class RunningPage(ctk.CTkFrame):
         except Exception:
             req_count = 0
         self.rpd_label.configure(
-            text=f"{req_count}  ·  RPD cap {q.rpd}/day"
+            text=f"{req_count}  ·  free tier ~{q.rpd}/day (est)"
         )
         self.rpd_caption.configure(
-            text=f"RPM cap {q.rpm}   adaptive throttle on"
+            text=f"~RPM {q.rpm} · adaptive throttle on · "
+                 f"verify at ai.google.dev"
         )
 
     def destroy(self) -> None:

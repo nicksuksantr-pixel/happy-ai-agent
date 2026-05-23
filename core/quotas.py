@@ -1,9 +1,15 @@
-"""Free-tier rate limit lookup per Gemini model.
+"""Free-tier rate limit ESTIMATES per Gemini model.
 
-Source: Google AI Studio public free-tier limits as of 2026 Q1. Limits
-shift over time — Google updates them without bumping any API version
-or release tag. Treat values here as best-effort defaults; paid-tier
-users should ignore the quota bars entirely.
+⚠️ These values are best-effort guesses. Google rotates free-tier
+ceilings silently — without bumping any API version or release tag —
+so any specific number here is "as we last saw it on ai.google.dev".
+Nick caught us claiming "RPD cap 1000/day" for gemini-3.1-flash-lite
+in v2.4.9 when nobody on the team had actually verified that
+number with the live Google docs.
+
+UI surfaces MUST frame these as estimates (e.g. "~RPD 1000/day est")
+and link the user to ai.google.dev/gemini-api/docs/rate-limits for
+the source of truth.
 
 The lookup uses **partial substring matching** (more specific first)
 so a model name like `gemini-3.1-flash-lite-preview-09-2025` still
@@ -13,7 +19,7 @@ back to a conservative DEFAULT_QUOTA.
 Caller pattern:
     from core.quotas import get_quota
     q = get_quota(app_state.model)
-    # q.rpm, q.tpm, q.rpd are the limits for that model
+    # q.rpm, q.tpm, q.rpd are estimates — frame the UI accordingly
 """
 from __future__ import annotations
 

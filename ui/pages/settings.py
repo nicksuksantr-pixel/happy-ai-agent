@@ -668,12 +668,19 @@ class SettingsPage(ctk.CTkFrame):
     # ── Model handlers ───────────────────────────────────────────────────
     def _build_model_quota_text(self, model: str) -> str:
         """One-liner shown under the model dropdown — picks numbers from
-        core.quotas so the text matches the actual free-tier limit for
-        whatever model is selected."""
+        core.quotas so the text matches the (best-known) free-tier limit
+        for whatever model is selected.
+
+        v2.5.0: numbers are framed as ESTIMATES with a "~" prefix. The
+        static table in core.quotas is best-effort — Google rotates
+        free-tier ceilings silently and Nick caught us claiming
+        "RPD cap 1000/day" for gemini-3.1-flash-lite when nobody on
+        the team had actually verified that number with Google."""
         from core.quotas import get_quota
         q = get_quota(model)
-        return (f"{model or '(none)'}  ·  free tier: "
-                f"RPM {q.rpm}  ·  TPM {q.tpm:,}  ·  RPD {q.rpd}/day")
+        return (f"{model or '(none)'}  ·  free tier est: "
+                f"~RPM {q.rpm}  ·  ~TPM {q.tpm:,}  ·  ~RPD {q.rpd}/day  "
+                f"·  verify at ai.google.dev")
 
     def _on_model_change(self, value: str) -> None:
         self.app.app_state.model = value

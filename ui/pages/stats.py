@@ -290,16 +290,18 @@ class StatsPage(ctk.CTkFrame):
         # core.quotas, keyed off the user's currently-picked model —
         # picking a higher-tier model should immediately raise the
         # bar's ceiling, not still claim flash-lite's 500/day.
+        # v2.5.0: framed as estimate. Google rotates free-tier
+        # ceilings without notice and our static table can drift.
         from core.quotas import get_quota
         q = get_quota(self.app.app_state.model)
         self._quota_label.configure(
-            text=f"{today_count} runs today  /  {q.rpd} free-tier ceiling"
+            text=f"{today_count} runs today  /  ~{q.rpd} free-tier est"
         )
         self._quota_bar.set(min(1.0, today_count / max(1, q.rpd)))
         self._quota_caption.configure(
-            text=f"RPM cap {q.rpm}   ·   "
-                 f"TPM cap {q.tpm:,}   ·   "
-                 f"resets at midnight Pacific time"
+            text=f"~RPM {q.rpm}   ·   "
+                 f"~TPM {q.tpm:,}   ·   "
+                 f"resets at midnight Pacific · verify at ai.google.dev"
         )
 
         # Mode split.
