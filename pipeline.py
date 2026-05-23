@@ -997,6 +997,15 @@ class PipelineRunner:
             self.on_phase_complete("coder", "Coder (pass 2 done)", self.phase_index, improved)
             self._delay()
         except Exception as e:
+            # INTENTIONAL silent fallback (not the v2.4.6 bug pattern).
+            # Pass 2 is a "critique + expand" enhancement on top of a
+            # complete Pass 1 draft. If the enhancement call fails,
+            # self.outputs["coder"] still holds the valid Pass 1 draft
+            # (the `= improved` assignment is inside the try, so it
+            # never ran on failure). Downstream phases continue safely
+            # with the Pass 1 candidate. Re-raising here would kill an
+            # otherwise-successful run just because the polish step
+            # transient-erred — the opposite of what Nick wants.
             self.on_phase_error("coder", "Coder pass 2", str(e)[:200])
 
         # 5. Frontend

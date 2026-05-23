@@ -67,7 +67,7 @@ installer/HappyAIAgentSetup.spec  ← Installer PyInstaller spec
 
 - ❌ Don't recommend Vertex AI (Nick closed GCP, lost ฿334)
 - ❌ Don't edit code if acting as Coss — analysis only
-- ❌ Don't reduce delay below 30s (TPM rate limit protection)
+- ❌ Don't change phase delay default without asking (v2.4.7 lowered min to 5s per Nick; default still favors free-tier safety)
 - ❌ Don't bring back Streamlit / HTTP server / localhost port — native CTk only
 - ❌ Don't reference `backups/happy_native_v2.0.6_pre_ui_rewrite.py` — deleted 2026-05-23 (was pre-`core/`+`ui/` split, caused stale audit confusion)
 

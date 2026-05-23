@@ -515,9 +515,12 @@ class SettingsPage(ctk.CTkFrame):
                 )
                 # Cancel button: only shown when leaving edit-mode
                 # without saving makes sense — i.e. user already has a
-                # connected key and is mid-edit. For a fresh sign-in
-                # there's nothing to cancel back to.
-                if is_editing:
+                # connected key AND is mid-edit. For a fresh sign-in
+                # (not connected, not editing) there's nothing to
+                # cancel back to. The `is_connected` guard prevents the
+                # button from appearing in the impossible-but-defensive
+                # disconnected+editing state.
+                if is_editing and is_connected:
                     self.cancel_change_btn.grid(
                         row=0, column=2, padx=(0, 0)
                     )
@@ -600,12 +603,40 @@ class SettingsPage(ctk.CTkFrame):
         )
 
     def _test_connection(self) -> None:
-        if not self.app.app_state.client:
-            messagebox.showwarning(
-                "Not connected", "Save an API key first."
-            )
-            return
-        ok, _ = test_connection(self.app.app_state.client)
+        # In edit mode with typed input → test the TYPED key (what the
+        # user is about to save). Otherwise → test the saved client.
+        # Without this branch, Test silently verifies the OLD key while
+        # the user thinks they're checking the new one they just typed,
+        # which produces the confusing "Test passed but my new key was
+        # never actually verified" footgun.
+        typed = ""
+        if getattr(self, "_editing_key", False):
+            try:
+                typed = self.api_key_input.get().strip()
+            except Exception:
+                typed = ""
+
+        if typed:
+            if not is_valid_key_format(typed):
+                messagebox.showerror(
+                    "Bad format",
+                    "Type a valid API key first "
+                    "(starts with AIza, >=35 chars).",
+                )
+                return
+            client, err = create_client(typed)
+            if err:
+                messagebox.showerror("Client error", err)
+                return
+            ok, _ = test_connection(client)
+        else:
+            if not self.app.app_state.client:
+                messagebox.showwarning(
+                    "Not connected", "Save an API key first."
+                )
+                return
+            ok, _ = test_connection(self.app.app_state.client)
+
         if ok:
             messagebox.showinfo(
                 "Test passed", "Gemini responded successfully.",
