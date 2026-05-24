@@ -14,6 +14,7 @@ from agents import (
     get_phases_for_mode, build_judge_prompt,
     CODER_INSTRUCTION, DEBUGGER_INSTRUCTION,
     CONTEXT_MAP, get_context_keys,
+    get_project_type_directive,
 )
 
 # Fix 2026-05-16 (Coddy #4 Day 2): ย้าย sessions ไปเก็บที่ user-profile (`~/.happy/sessions/`)
@@ -636,8 +637,15 @@ class PipelineRunner:
                  mode="quick", attachments=None,
                  on_phase_start=None, on_phase_complete=None,
                  on_phase_error=None, on_judge_round=None, should_stop=None,
-                 get_model: Optional[Callable[[], str]] = None):
+                 get_model: Optional[Callable[[], str]] = None,
+                 project_type: str = "html"):
         self.client = client
+        # v2.7.0: project type ("html" / "desktop_installer") locks the
+        # output shape across every agent. `build_context()` prepends the
+        # matching directive from `agents.PROJECT_TYPE_DIRECTIVES` ahead
+        # of the user task so PM/Architect/Coder/Tester all align on
+        # deliverables, constraints, packaging, and validation criteria.
+        self.project_type = project_type
         # v2.5.0: model is read live so the user can switch mid-run
         # (e.g. flash-lite for cheap planners → 2.5-pro for Coder).
         # Caller passes `get_model=lambda: app_state.model` so every
@@ -691,8 +699,20 @@ class PipelineRunner:
 
         extras: optional {label: content} pairs appended at the end (e.g., 'current_code',
                 'judge_instructions' for revision calls).
+
+        v2.7.0: project-type directive is prepended ABOVE the user task so
+        every agent (not just Coder) is bound by the deliverable shape,
+        constraints, and validation criteria for the chosen format
+        (html vs desktop_installer). See `agents.PROJECT_TYPE_DIRECTIVES`.
         """
-        parts = [f"=== ORIGINAL USER TASK (ground truth) ===\n{task}"]
+        parts = []
+        pt_directive = get_project_type_directive(self.project_type)
+        if pt_directive:
+            parts.append(
+                f"=== PROJECT TYPE DIRECTIVE ({self.project_type}) ===\n"
+                f"{pt_directive}"
+            )
+        parts.append(f"=== ORIGINAL USER TASK (ground truth) ===\n{task}")
         needs = get_context_keys(agent_id)
         kickoff_ids = [p["id"] for p in KICKOFF_PHASES]
         added = set()  # กัน duplicate ถ้า "ALL"/"ALL_KICKOFF" overlap กับ explicit ids

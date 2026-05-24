@@ -36,6 +36,11 @@ env/
 dist/
 build/
 
+# v2.7.0: bundled embedded Python — ~50 MB unpacked, re-stageable
+# via `python tools/stage_embedded_python.py`. Don't commit; rebuild
+# on each dev box. CI clones can also re-stage (the script is idempotent).
+vendor/
+
 # Installer build outputs — .iss script + assets ใน installer/ ส่งขึ้น git ได้
 # แต่ compiled .exe ใหญ่เกินไป ไม่ commit
 installer/output/

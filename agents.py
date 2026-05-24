@@ -872,3 +872,209 @@ def get_phases_for_mode(mode="quick"):
     if mode == "thorough":
         return KICKOFF_PHASES + IMPL_PHASES
     return IMPL_PHASES
+
+
+# ========== v2.7.0 PROJECT TYPE DIRECTIVES ==========
+#
+# Every agent reads the chosen directive at the TOP of its context
+# (before the user's task), so PM/Architect/Coder/Tester all align on
+# the same target shape. Without this, the user typed "make a tic-tac-toe"
+# and the team had to guess: HTML page? Tk app? Streamlit dashboard?
+#
+# Pipeline injection point: `PipelineRunner.build_context()` prepends
+# `=== PROJECT TYPE DIRECTIVE (<key>) ===\n<directive>` ahead of
+# `=== ORIGINAL USER TASK ===`. Keys match `app_state.project_type`
+# values (see `core.config.DEFAULT_SETTINGS["project_type"]`).
+#
+# Editing rules:
+#   - Each directive is one self-contained spec — agents should NOT have
+#     to guess about deliverables, constraints, or quality bar.
+#   - Forbidden choices are listed explicitly so Coder/Architect don't
+#     drift into Flask / React / Electron / etc.
+#   - The "VALIDATION" line is what Tester checks against — keep it
+#     concrete + binary (pass/fail), not vague aspirations.
+#   - Keep each under ~900 words so the token cost is reasonable for
+#     every phase call.
+
+PROJECT_TYPE_DIRECTIVES = {
+    "html": """\
+TARGET: A single-folder web project that runs by double-clicking
+`index.html` in any modern browser. No build step, no server, no
+internet connection required at runtime.
+
+DELIVERABLES (mandatory):
+- `index.html` — the entry point. The end user opens THIS file in their
+  browser (file://) and the app works. This file is the contract.
+- `style.css` — visual presentation. (Inline `<style>` inside index.html
+  is acceptable only for tiny single-screen apps under ~20 lines of CSS.)
+- `app.js` (general) or `game.js` (for games / canvas / animation) —
+  behaviour and event handling. (Inline `<script>` inside index.html is
+  acceptable only for tiny apps under ~30 lines of JS.)
+- Optional: `assets/` folder for images, icons, sounds — all referenced
+  via relative paths (`assets/logo.png`, never `/assets/...` and never
+  `C:\\...`).
+
+CONSTRAINTS — what NOT to do:
+- NO frameworks that need a build step (React, Vue, Svelte, Next.js,
+  Angular, Solid). They require `npm install` + bundler → defeats
+  "double-click to run".
+- NO server-side anything. NO Node.js, Python backend, PHP, Ruby.
+- NO `fetch()` calls to an external API the user hasn't set up. The
+  app must work offline.
+- NO ES `import` statements at the top of script files when loaded
+  from file:// — browsers block them for CORS reasons. Use plain
+  `<script src="app.js"></script>` tags. (Inline modules with
+  `type="module"` work only when served over http — explicitly out of
+  scope here.)
+- NO external CDN dependencies (jQuery via cdnjs, Bootstrap via cdn,
+  Google Fonts). The app must work with the network unplugged.
+  Vendor anything you genuinely need into the project folder.
+- NO inline event handlers (`onclick="..."`) — use `addEventListener`
+  in `app.js`. Cleaner separation of concerns.
+
+REQUIRED HTML BOILERPLATE:
+- `<!DOCTYPE html>`
+- `<html lang="en">`
+- `<meta charset="utf-8">`
+- `<meta name="viewport" content="width=device-width, initial-scale=1">`
+- `<title>` matching the app name
+- Semantic structure: `<header>`, `<main>`, `<footer>` where appropriate
+  — not divs everywhere.
+
+QUALITY BAR:
+- App launches and is interactive within 1 second of opening `index.html`.
+- Every visible button, input, and control DOES SOMETHING. No "TODO"
+  stubs, no `alert("not implemented")` placeholders.
+- Responsive: usable from 320 px (mobile) through 1920 px (desktop)
+  without horizontal scroll.
+- Modern look: deliberate spacing (use `rem` / `em`, not pixel-precise
+  6 px paddings everywhere), legible typography (system font stack is
+  fine), a real colour palette (not the browser default greys).
+- Accessible: tab order is sensible, `<label>` associated with inputs,
+  buttons have visible focus rings, contrast meets WCAG AA on critical
+  text.
+- Errors handled gracefully — if user enters bad input, show a clear
+  inline message, don't `console.error()` silently.
+
+PACKAGING (DevOps phase output):
+- Plain folder. No zip, no build pipeline.
+- README explains in two sentences: "Open `index.html` in any browser.
+  Drag it into a tab or double-click it."
+- Optional: a single-line static-server hint for users who want
+  http:// behaviour (`python -m http.server` from the folder).
+
+VALIDATION (Tester phase pass criteria):
+- Open `index.html` in a fresh browser tab. The page MUST render the
+  intended UI immediately, with no `404` requests in the DevTools
+  Network tab and no errors in the Console tab.
+- Click through the primary user flow described in the task. It MUST
+  produce the expected result end-to-end without manual page reloads.
+- Resize the window to 375 px wide (iPhone width). The layout MUST
+  stay usable — no overlapping elements, no horizontal scrollbar.
+""",
+
+    "desktop_installer": """\
+TARGET: A Python desktop application that ships as a Windows .exe
+installer. The end user double-clicks `Setup.exe`, follows a short
+wizard, and a working app icon lands on their desktop + Start menu.
+The app runs offline once installed.
+
+DELIVERABLES (mandatory):
+- `main.py` — application entry point. MUST contain
+  `if __name__ == "__main__":` so PyInstaller can resolve it. The
+  function it calls (`main()` by convention) creates the root window
+  and enters the Tk mainloop.
+- Additional `.py` modules split by responsibility — e.g. `ui.py`
+  (widgets + layout), `logic.py` (pure business logic),
+  `persistence.py` (settings + state JSON). One feature per file,
+  no 2000-line god modules.
+- `requirements.txt` — pinned third-party dependencies, one per line,
+  exact versions only (`customtkinter==5.2.2`, not `>=5.2`). Include
+  ONLY what the code actually imports. Stdlib does not go here.
+- `README.md` — three sections: "Install" (download Setup.exe, run it),
+  "Run" (click desktop shortcut), "Build from source" (clone repo,
+  `pip install -r requirements.txt`, run `python build.py`).
+- `build.py` — a script that, when executed, produces a working
+  `dist/AppName.exe` via PyInstaller. See PACKAGING below.
+- Optional `assets/` — `.ico` for window/taskbar icon, images, fonts,
+  data files. Always reference via paths derived from
+  `Path(__file__).parent` so they resolve inside the frozen bundle
+  (PyInstaller unpacks data to `sys._MEIPASS` at runtime; the
+  `Path(__file__).parent` idiom handles both modes).
+
+GUI FRAMEWORK — choose ONE, in this preference order:
+1. **CustomTkinter** (`customtkinter`) — modern dark/light theming,
+   bundles cleanly with PyInstaller, ~3 MB extra in the .exe. This
+   is the default unless the task explicitly needs something else.
+2. **Tkinter** (stdlib, zero extra install) — simpler look, no third-party
+   dependency. Use for very minimal utilities.
+3. **PyQt6** — heavier (~50 MB in the .exe) but professional widget
+   set. Use ONLY when the task explicitly needs PyQt features (rich
+   text editing, docking panels, Qt Designer integration). Surface
+   the size cost in the Architect phase.
+
+CONSTRAINTS — what NOT to do:
+- NO web frameworks (Flask, FastAPI, Django, Streamlit) — wrong
+  product type entirely.
+- NO server processes, no `localhost` ports, no HTTP server. Single
+  Python process = the entire app.
+- NO heavy ML/AI dependencies that fight PyInstaller without manual
+  hooks (TensorFlow, PyTorch, scikit-learn with sparse matrices,
+  matplotlib with non-Agg backend). If the task genuinely needs them,
+  the Architect phase MUST raise this as a packaging risk + scope cut.
+- All file paths derived from `Path(__file__).parent` (for bundled
+  assets) or `Path.home()` (for user-writable state). NEVER hardcode
+  `C:\\Users\\...` or `/home/...` paths.
+- All user-writable data lives under `~/.app-name/` (e.g.
+  `~/.tictactoe/`, `~/.calc/`). NEVER write inside the install dir
+  (`Program Files` is read-only after install).
+- Atomic file writes for persistent state — `tempfile.mkstemp` +
+  write + `os.fsync` + `os.replace` so a crash/power-loss leaves
+  either the old or new file, never half-written.
+- ALWAYS `if __name__ == "__main__": main()` in `main.py`.
+  PyInstaller refuses to package a script without this.
+
+QUALITY BAR:
+- App window opens within 2 seconds of launch.
+- No console window flashes on startup (the `--windowed` flag on
+  `pyinstaller` handles this — `build.py` MUST include it).
+- Window has a `minsize()` so the layout doesn't collapse.
+- All settings/preferences persist across launches via atomic JSON
+  write to `~/.app-name/settings.json`.
+- Uncaught-exception handler writes a crash log to
+  `~/.app-name/crash.log` so the user can email it to you for
+  support — frozen `--windowed` builds have no stderr console.
+- Graceful close: a non-fatal exception during shutdown does not
+  prevent the window from being destroyed.
+
+PACKAGING (DevOps phase output — write `build.py`):
+```python
+import subprocess, sys
+args = [sys.executable, "-m", "PyInstaller",
+        "--onefile", "--windowed",
+        "--icon=assets/app.ico",    # if assets/app.ico exists
+        "--name", "AppName",
+        "main.py"]
+subprocess.run(args, check=True)
+```
+The README "Build from source" section must list the exact pip
+install + python build.py invocation.
+
+VALIDATION (Tester phase pass criteria):
+- `python main.py` from a clean checkout (after `pip install -r
+  requirements.txt`) MUST launch the GUI and let the user perform
+  the primary task in the user's request, end-to-end, without
+  console errors.
+- Running `python build.py` MUST produce a `dist/AppName.exe` that,
+  when double-clicked, behaves identically to `python main.py`.
+- Closing the window MUST cleanly exit the Python process — no
+  zombie tasks in Task Manager.
+""",
+}
+
+
+def get_project_type_directive(project_type: str) -> str:
+    """Return the LLM-context directive for a given project type, or
+    an empty string if unknown (pipeline behaves as pre-v2.7.0 then —
+    no directive injected, free-form output)."""
+    return PROJECT_TYPE_DIRECTIVES.get(project_type, "")

@@ -184,17 +184,47 @@ class HomePage(ctk.CTkFrame):
         opt.grid_columnconfigure(0, weight=1)
         opt.grid_columnconfigure(1, weight=0)
 
-        # ── Row A: Mode segmented + Attach button ──────────────────────
+        # ── Row A: BUILD AS (project type) + MODE segmented ────────────
+        # v2.7.0: project-type selector. Locks the deliverable shape
+        # (browser folder vs Python+PyInstaller installer) so every
+        # agent generates the right artifact instead of guessing.
         row_a = ctk.CTkFrame(opt, fg_color="transparent")
         row_a.grid(row=0, column=0, columnspan=2, sticky="ew",
                    pady=(0, theme.S2))
         row_a.grid_columnconfigure(1, weight=1)
+        row_a.grid_columnconfigure(3, weight=1)
+
+        ctk.CTkLabel(
+            row_a, text="BUILD AS",
+            font=theme.FONT_OVERLINE, text_color=theme.TEXT_DIM,
+            anchor="w",
+        ).grid(row=0, column=0, sticky="w", padx=(0, theme.S3))
+
+        # Display labels are user-friendly; canonical values (lowercase
+        # snake_case) are stored in app_state.project_type. The two
+        # `_pt_*` helpers below convert in both directions.
+        self.project_type_var = ctk.StringVar(
+            value=self._pt_label(self.app.app_state.project_type)
+        )
+        self._pt_seg = ctk.CTkSegmentedButton(
+            row_a, values=["HTML / Web", "Desktop installer"],
+            variable=self.project_type_var,
+            command=self._on_project_type_change,
+            fg_color=theme.BG_INPUT,
+            selected_color=theme.ACCENT_2,
+            selected_hover_color=theme.ACCENT_2_HOVER,
+            unselected_color=theme.BG_CARD_HOVER,
+            unselected_hover_color=theme.BORDER,
+            text_color=theme.TEXT,
+            font=theme.FONT_BODY_BOLD,
+        )
+        self._pt_seg.grid(row=0, column=1, sticky="w", padx=(0, theme.S4))
 
         ctk.CTkLabel(
             row_a, text="MODE",
             font=theme.FONT_OVERLINE, text_color=theme.TEXT_DIM,
             anchor="w",
-        ).grid(row=0, column=0, sticky="w", padx=(0, theme.S3))
+        ).grid(row=0, column=2, sticky="w", padx=(0, theme.S3))
 
         self.mode_var = ctk.StringVar(
             value="Thorough" if self.app.app_state.pipeline_mode ==
@@ -212,14 +242,14 @@ class HomePage(ctk.CTkFrame):
             text_color=theme.TEXT,
             font=theme.FONT_BODY_BOLD,
         )
-        self._mode_seg.grid(row=0, column=1, sticky="w")
+        self._mode_seg.grid(row=0, column=3, sticky="w")
 
         self.attach_summary = ctk.CTkLabel(
             row_a, text="0 attached",
             font=theme.FONT_TINY, text_color=theme.TEXT_DIM,
             anchor="e",
         )
-        self.attach_summary.grid(row=0, column=2, sticky="e",
+        self.attach_summary.grid(row=0, column=4, sticky="e",
                                  padx=(0, theme.S2))
 
         self.attach_btn = ctk.CTkButton(
@@ -231,7 +261,7 @@ class HomePage(ctk.CTkFrame):
             corner_radius=theme.RADIUS_BUTTON,
             command=self._pick_files,
         )
-        self.attach_btn.grid(row=0, column=3, sticky="e")
+        self.attach_btn.grid(row=0, column=5, sticky="e")
 
         # ── Row B: meta hint + Run Pipeline CTA ────────────────────────
         row_b = ctk.CTkFrame(opt, fg_color="transparent")
@@ -467,13 +497,35 @@ class HomePage(ctk.CTkFrame):
                    and self.app.app_state.current_session_path == sp)
         self.app.show_page("running" if is_live else "done")
 
-    # ── Mode + attach handlers ──────────────────────────────────────────
+    # ── Mode + attach + project-type handlers ──────────────────────────
     def _on_mode_change(self, value: str) -> None:
         self.app.app_state.pipeline_mode = (
             "thorough" if value.lower().startswith("thorough") else "quick"
         )
         self.app.app_state.persist()
         self.on_show()
+
+    # v2.7.0: project-type selector helpers — convert between the
+    # user-facing labels ("HTML / Web", "Desktop installer") and the
+    # canonical lowercase keys used in app_state + settings.json +
+    # agents.PROJECT_TYPE_DIRECTIVES.
+    _PT_TO_LABEL = {
+        "html": "HTML / Web",
+        "desktop_installer": "Desktop installer",
+    }
+    _LABEL_TO_PT = {v: k for k, v in _PT_TO_LABEL.items()}
+
+    def _pt_label(self, project_type: str) -> str:
+        """Canonical key → user-facing segmented-button label."""
+        return self._PT_TO_LABEL.get(project_type, "HTML / Web")
+
+    def _pt_key(self, label: str) -> str:
+        """Segmented-button label → canonical key."""
+        return self._LABEL_TO_PT.get(label, "html")
+
+    def _on_project_type_change(self, value: str) -> None:
+        self.app.app_state.project_type = self._pt_key(value)
+        self.app.app_state.persist()
 
     def _pick_files(self) -> None:
         if self.app.app_state.pipeline_mode != "thorough":
@@ -529,5 +581,8 @@ class HomePage(ctk.CTkFrame):
             "judge_threshold": s.judge_threshold,
             "max_judge_loops": s.max_judge_loops,
             "mode": s.pipeline_mode,
+            # v2.7.0: project_type pinned at run start (see PipelineRunner
+            # constructor comment for why this is snapshot, not live).
+            "project_type": s.project_type,
         }
         self.app.start_pipeline(task, settings)

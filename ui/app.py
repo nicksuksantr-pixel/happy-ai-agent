@@ -83,6 +83,10 @@ class AppState:
         self.judge_threshold: int = s["judge_threshold"]
         self.max_judge_loops: int = s["max_judge_loops"]
         self.pipeline_mode: str = s["pipeline_mode"]
+        # v2.7.0: project type selector on Home page.
+        # Values: "html" / "desktop_installer" — see
+        # `core.config.DEFAULT_SETTINGS` + `agents.PROJECT_TYPE_DIRECTIVES`.
+        self.project_type: str = s.get("project_type", "html")
 
         # Pipeline state.
         self.current_session_path: Optional[Path] = None
@@ -108,6 +112,7 @@ class AppState:
             "judge_threshold": self.judge_threshold,
             "max_judge_loops": self.max_judge_loops,
             "pipeline_mode": self.pipeline_mode,
+            "project_type": self.project_type,
         })
 
     def auto_auth(self) -> None:
@@ -918,6 +923,12 @@ class HappyApp(ctk.CTk):
         # but the runner kept calling the originally-selected model
         # for the rest of the pipeline. (Settings page already persists
         # `app_state.model` on each dropdown change.)
+        # v2.7.0: pass `project_type` so every agent in build_context
+        # sees the directive locking deliverable shape (html vs
+        # desktop_installer). The project type is captured at pipeline
+        # START — switching mid-run would change the deliverable spec
+        # halfway through and produce a garbled mix, so we deliberately
+        # snapshot it (unlike `model` which is live).
         runner = PipelineRunner(
             client=self.app_state.client,
             get_model=lambda: self.app_state.model,
@@ -926,6 +937,7 @@ class HappyApp(ctk.CTk):
             max_judge_loops=settings["max_judge_loops"],
             mode=settings["mode"],
             attachments=attachments,
+            project_type=settings.get("project_type", "html"),
             on_phase_start=on_start,
             on_phase_complete=on_complete,
             on_phase_error=on_error,

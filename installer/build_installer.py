@@ -20,6 +20,7 @@ Why folder mode (not onefile):
 """
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -35,6 +36,44 @@ SETUP_FOLDER = ROOT / "dist" / "HappyAIAgent-Setup"
 SETUP_ZIP = ROOT / "dist" / "HappyAIAgent-Setup.zip"
 SETUP_EXE = SETUP_FOLDER / "HappyAIAgent-Setup.exe"
 INSTALLER_SPEC = ROOT / "installer" / "HappyAIAgentSetup.spec"
+# v2.7.0: bundled embedded Python + PyInstaller so the end user can build
+# .exe without ever installing Python. Staged via tools/stage_embedded_python.py.
+EMBED_SRC = ROOT / "vendor" / "python-embed"
+EMBED_DEST_REL = Path("_internal") / "python-embed"
+
+
+def ensure_embedded_python() -> None:
+    """Copy vendor/python-embed/ → dist/HappyAIAgent/_internal/python-embed/.
+
+    v2.7.0 (Nick directive): the .exe builder spawns Python to run
+    PyInstaller. If the user has no Python installed, build fails. We
+    ship a working Python + PyInstaller inside the installer so it
+    works on a clean machine zero-config.
+
+    If vendor/python-embed/ is missing, instruct the developer to run
+    the one-time staging script — DON'T silently ship without it (that
+    would regress the user experience back to "install Python first").
+    """
+    if not EMBED_SRC.exists():
+        print(f"[!] vendor/python-embed/ not staged.")
+        print(f"    Run once: python tools/stage_embedded_python.py")
+        sys.exit(1)
+    if not APP_DIST.exists():
+        # Caller will check this in zip_payload too, but we need APP_DIST
+        # to copy into. Fail early with a clearer message.
+        print(f"[!] Main app not built at {APP_DIST}")
+        print("    Run: pyinstaller HappyAIAgent.spec --noconfirm")
+        sys.exit(1)
+
+    dest = APP_DIST / EMBED_DEST_REL
+    if dest.exists():
+        # Idempotent rebuild: clear stale embed (a re-stage may have changed
+        # python patch version or PyInstaller version).
+        shutil.rmtree(dest, ignore_errors=True)
+    print(f"[*] Copying embedded Python  ->  {dest.relative_to(ROOT)}")
+    shutil.copytree(EMBED_SRC, dest)
+    total = sum(p.stat().st_size for p in dest.rglob("*") if p.is_file())
+    print(f"    Embedded toolchain: {total / (1024 * 1024):.1f} MB")
 
 
 def zip_payload() -> None:
@@ -94,6 +133,7 @@ def pack_setup_folder() -> None:
 
 
 def main() -> int:
+    ensure_embedded_python()  # v2.7.0 — must run BEFORE zip_payload
     zip_payload()
     build_installer()
     pack_setup_folder()

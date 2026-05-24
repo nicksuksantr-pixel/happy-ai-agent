@@ -158,6 +158,13 @@ DEFAULT_SETTINGS = {
     "judge_threshold": 100,
     "max_judge_loops": 5,
     "pipeline_mode": "quick",
+    # v2.7.0: project type selector on Home page. Two options now:
+    #   "html"               — single-folder HTML/CSS/JS, double-click index.html
+    #   "desktop_installer"  — Python CTk + PyInstaller .exe + Setup wizard
+    # Default is "html" — fewer constraints, faster to verify by the
+    # user (open browser vs build .exe). Pipeline injects a per-type
+    # directive into every agent's context (agents.PROJECT_TYPE_DIRECTIVES).
+    "project_type": "html",
 }
 
 

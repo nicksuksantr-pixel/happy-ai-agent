@@ -40,14 +40,47 @@ def _looks_like_python(path: str) -> bool:
         return False
 
 
+def _bundled_python_path() -> Optional[Path]:
+    """v2.7.0: locate the embedded Python shipped inside the installer.
+
+    Lives at `_internal/python-embed/python.exe` in the frozen bundle
+    (see `installer/build_installer.py` which copies `vendor/python-embed/`
+    into the payload). In source mode it's `vendor/python-embed/python.exe`
+    relative to the project root — useful for testing the bundled-path
+    behaviour without doing a full frozen build.
+
+    Returns the Path if the file exists, else None. Caller still has to
+    smoke-test with `_looks_like_python()` because a corrupted or
+    partially-extracted bundle is conceivable.
+    """
+    mp = getattr(sys, "_MEIPASS", None)
+    if mp:
+        cand = Path(mp) / "python-embed" / "python.exe"
+        if cand.exists():
+            return cand
+    src_cand = (
+        Path(__file__).resolve().parent / "vendor" / "python-embed" / "python.exe"
+    )
+    if src_cand.exists():
+        return src_cand
+    return None
+
+
 def _find_python_executable() -> Optional[str]:
     """หา python.exe จริงสำหรับ subprocess — ไม่ใช้ sys.executable เมื่ออยู่ใน frozen exe.
 
-    Search order:
-    1. NOT frozen → sys.executable (เราเป็น python interpreter อยู่แล้ว)
+    Search order (v2.7.0 — added bundled-first lookup):
+    0. **Bundled embedded Python** at `_internal/python-embed/python.exe`
+       — shipped inside the installer payload, zero user setup needed
+    1. NOT frozen + no bundled → sys.executable
     2. py.exe Windows launcher (handle versions)
     3. PATH lookup (python.exe / python3.exe)
     4. Common install locations
+
+    The bundled lookup runs in BOTH source mode (via `vendor/python-embed/`)
+    AND frozen mode (via `sys._MEIPASS/python-embed/`), so the same code
+    path works for dev testing + production. This makes "Build .exe" work
+    out-of-the-box on a fresh user machine with no Python installed.
 
     Returns: path to python.exe — หรือ None ถ้าหาไม่เจอ
     """
@@ -55,11 +88,18 @@ def _find_python_executable() -> Optional[str]:
     if _PYTHON_EXE_CACHE:
         return _PYTHON_EXE_CACHE
 
+    # 0. Bundled embedded Python (v2.7.0) — always preferred.
+    bundled = _bundled_python_path()
+    if bundled and _looks_like_python(str(bundled)):
+        _PYTHON_EXE_CACHE = str(bundled)
+        return _PYTHON_EXE_CACHE
+
     if not getattr(sys, "frozen", False):
         _PYTHON_EXE_CACHE = sys.executable
         return _PYTHON_EXE_CACHE
 
-    # Frozen mode — หา python ภายนอก
+    # Frozen mode + no bundled python (broken install?) — fall back to
+    # external Python search so the user isn't dead in the water.
     candidates: list = []
 
     # 1. py.exe (Windows Python Launcher) — ปลอดภัยสุด
