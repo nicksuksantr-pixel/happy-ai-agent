@@ -42,14 +42,15 @@ def _get_token() -> str:
     """Lazy-read the PAT every call so we pick up .env values that may
     have been loaded AFTER this module was imported. (core.config loads
     .env on import, but app.py imports updater BEFORE core.config — see
-    feedback note in v2.3.3 changelog.)"""
+    feedback note in v2.3.3 changelog.)
+
+    v2.5.1 (Cos audit B-05): the previous `UPDATE_TOKEN = _get_token()`
+    module-level constant was dead code — `_auth_headers()` already
+    calls `_get_token()` on every request, and no external code reads
+    the constant. Removed to eliminate the misleading "captured at
+    import" trap for future audits.
+    """
     return os.environ.get("HAPPY_AI_UPDATE_TOKEN", "").strip()
-
-
-# Kept for back-compat reads (Settings page "Check for updates" reads
-# this to log "token configured: True/False"). Don't rely on it at
-# request time — use _get_token() inside the request path.
-UPDATE_TOKEN = _get_token()
 
 
 def _auth_headers(accept: str = "application/vnd.github+json") -> dict:

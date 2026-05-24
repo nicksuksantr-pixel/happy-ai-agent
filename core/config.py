@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import os
 import sys
+import warnings
 from pathlib import Path
+from typing import Optional
 
 
 def _load_env_file(path: Path) -> None:
@@ -121,13 +123,32 @@ SIDEBAR_W = 220
 
 
 # ─── Free-tier quota reference ────────────────────────────────────────────
-# DEPRECATED constants — kept for any third-party code that imported them.
-# Real quota lookups are per-model now; see `core.quotas.get_quota(model)`.
-# These values match the DEFAULT model (gemini-3.1-flash-lite-preview);
-# any UI that picks a different model MUST go through core.quotas.
-QUOTA_RPM = 15
-QUOTA_TPM = 250_000
-QUOTA_RPD = 500
+# DEPRECATED constants — kept ONLY for back-compat with third-party
+# importers. Internal code MUST go through `core.quotas.get_quota(model)`,
+# which returns per-model values (these flat constants are wrong for any
+# model other than the default).
+#
+# v2.5.1: a `__getattr__` module hook emits a DeprecationWarning at the
+# first read so accidental new uses get flagged. The values still resolve
+# to the legacy default-model numbers so nothing breaks at runtime.
+_QUOTA_LEGACY = {
+    "QUOTA_RPM": 15,
+    "QUOTA_TPM": 250_000,
+    "QUOTA_RPD": 500,  # matches gemini-3.1-flash-lite-preview free-tier
+}
+
+
+def __getattr__(name: str):
+    if name in _QUOTA_LEGACY:
+        warnings.warn(
+            f"core.config.{name} is deprecated — use "
+            f"`core.quotas.get_quota(model)` for per-model limits instead. "
+            f"These flat constants assume the default-model free tier and "
+            f"silently lie for any other model.",
+            DeprecationWarning, stacklevel=2,
+        )
+        return _QUOTA_LEGACY[name]
+    raise AttributeError(f"module 'core.config' has no attribute {name!r}")
 
 
 # ─── Pipeline defaults ───────────────────────────────────────────────────
@@ -149,9 +170,34 @@ def is_frozen() -> bool:
     return bool(getattr(sys, "frozen", False))
 
 
-def python_executable() -> str:
-    """Where to launch Python for child processes (builder.py uses this)."""
-    return sys.executable or "python"
+def python_executable() -> Optional[str]:
+    """Where to launch a real Python interpreter for child processes.
+
+    v2.5.1 (Cos audit B-02): when running as a frozen PyInstaller bundle,
+    `sys.executable` is `HappyAIAgent.exe` — NOT a Python interpreter.
+    Spawning subprocesses with it produces a recursive HAPPY launch, not
+    a python invocation. `builder._find_python_executable()` already
+    knows how to locate a real python in frozen mode (py.exe launcher,
+    PATH lookup, common install paths, with a smoke-test to reject
+    HAPPY-renamed-as-python.exe), so just delegate.
+
+    In source mode, `sys.executable` IS python — fast path returns it
+    directly.
+
+    Returns None if no real python interpreter is on the system
+    (frozen mode + python not installed). Callers must handle None —
+    see `builder.PYTHON_MISSING_SENTINEL` for the conventional response.
+    """
+    if not is_frozen():
+        return sys.executable or "python"
+    # Frozen mode — defer to builder's verified lookup. Imported lazily
+    # to avoid a config↔builder cycle at module load (builder reads
+    # config constants during its own import).
+    try:
+        from builder import _find_python_executable
+        return _find_python_executable()
+    except Exception:
+        return None
 
 
 # Touch the env to ensure USER_DATA exists on import.

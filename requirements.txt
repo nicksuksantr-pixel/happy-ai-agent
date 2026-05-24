@@ -1,3 +1,8 @@
+# HAPPY AI Agent — runtime dependencies
+# Use `pip install -r requirements.txt` for a fresh dev environment.
+# Build-time tools below are only needed when packaging the .exe.
+
+# --- Runtime (always required) ---
 customtkinter>=5.2.0
 google-genai>=0.3.0
 google-auth>=2.25.0
@@ -7,3 +12,6 @@ openpyxl>=3.1
 pypdf>=4.0
 Pillow>=10.0
 pystray>=0.19.5
+
+# --- Build tooling (only for packaging) ---
+pyinstaller>=6.0

@@ -6,6 +6,11 @@ import io
 from pathlib import Path
 from typing import List, Dict, Tuple
 
+# v2.5.1 (Cos audit B-03): hoisted from inside build_gemini_parts() so an
+# ImportError surfaces at module load (where it's diagnosable) instead of
+# deferring until the first multimodal call deep in the pipeline.
+from google.genai import types as _genai_types
+
 IMAGE_TYPES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 PDF_TYPES = {".pdf"}
 WORD_TYPES = {".docx"}
@@ -191,11 +196,12 @@ def load_file_for_gemini(filename: str, file_bytes: bytes) -> Dict:
 
 
 def build_gemini_parts(text_prompt: str, files: List[Dict]) -> list:
-    from google.genai import types
     parts = [text_prompt]
     for f in files:
         if f["send_as"] == "inline_data":
-            parts.append(types.Part.from_bytes(data=f["data"], mime_type=f["mime_type"]))
+            parts.append(_genai_types.Part.from_bytes(
+                data=f["data"], mime_type=f["mime_type"],
+            ))
         else:
             parts.append(f"\n\n{f['data']}")
     return parts

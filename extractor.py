@@ -18,7 +18,16 @@ from pathlib import Path
 from typing import Optional
 
 
-CODE_BLOCK_RE = re.compile(r"```(\w*)\n(.*?)\n```", re.DOTALL)
+# v2.5.1 (Cos audit B-06): old regex `r"```(\w*)\n(.*?)\n```"` rejected
+# valid code blocks that LLMs commonly emit:
+#   - fences with extra text after the language tag (e.g. "```python title=app.py")
+#   - blank lines immediately inside the fence
+#   - closing fences with trailing whitespace
+# New pattern:
+#   - `[^\n]*` after `\w*` — allow any trailing text on the open line
+#   - `[\s\S]*?` — match any content including blank lines, lazily
+#   - `[ \t]*` before close fence — tolerate trailing whitespace
+CODE_BLOCK_RE = re.compile(r"```(\w*)[^\n]*\n([\s\S]*?)\n[ \t]*```")
 
 # patterns สำหรับหา filename ในบรรทัดต้นๆ ของ code block
 FILENAME_PATTERNS = [
@@ -182,25 +191,47 @@ def extract_files_from_text(text: str) -> dict:
     return files
 
 
+def _session_phase_files(session_path: Path, phase_ids: list) -> list:
+    """Locate saved phase outputs by phase_id, regardless of numeric prefix.
+
+    v2.5.1 (Cos audit B-04): the previous hardcoded `["04_coder.md",
+    "05_frontend.md"]` lookup was wrong in **thorough mode** — KICKOFF_PHASES
+    adds 7 phases at the front, so coder lands at `11_coder.md` and frontend
+    at `12_frontend.md`. Old code silently returned `{}` for thorough runs.
+
+    Strategy: glob `*_<phase_id>.md` so any prefix shift caused by adding
+    or reordering KICKOFF / IMPL phases keeps working without source edits.
+    """
+    found = []
+    for pid in phase_ids:
+        # Highest-numbered file wins if there are duplicates (e.g. a phase
+        # ran twice — caller typically wants the latest pass).
+        matches = sorted(session_path.glob(f"*_{pid}.md"))
+        if matches:
+            found.append(matches[-1])
+    return found
+
+
 def extract_from_session(session_path: Path) -> dict:
     """
     ดึงโค้ดจาก session — ลำดับความสำคัญ:
     1. debugger_revision (ล่าสุด) — code หลัง Judge แก้
     2. debugger — code หลัง Debugger ครั้งแรก
-    3. coder + frontend — รวมจาก 2 phase
+    3. coder + frontend — รวมจาก 2 phase (resolved by phase_id, not by
+       hardcoded numeric prefix)
     """
     # ลองหา debugger revision ล่าสุด
     revisions = sorted([
         f for f in session_path.iterdir()
         if f.suffix == ".md" and "debugger_revision" in f.name
     ], reverse=True)
-    
+
     if revisions:
         text = revisions[0].read_text(encoding="utf-8")
         files = extract_files_from_text(text)
         if files:
             return files
-    
+
     # ถ้าไม่มี ใช้ debugger
     debugger_file = next(
         (f for f in session_path.iterdir() if f.name.endswith("debugger.md")),
@@ -211,17 +242,16 @@ def extract_from_session(session_path: Path) -> dict:
         files = extract_files_from_text(text)
         if files:
             return files
-    
-    # ถ้ายังไม่มี รวม coder + frontend
+
+    # ถ้ายังไม่มี รวม coder + frontend (resolve by phase_id — see
+    # _session_phase_files docstring for why hardcoded "04_/05_" is wrong).
     combined = ""
-    for fname in ["04_coder.md", "05_frontend.md"]:
-        f = session_path / fname
-        if f.exists():
-            combined += f.read_text(encoding="utf-8") + "\n\n"
-    
+    for f in _session_phase_files(session_path, ["coder", "frontend"]):
+        combined += f.read_text(encoding="utf-8") + "\n\n"
+
     if combined:
         return extract_files_from_text(combined)
-    
+
     return {}
 
 
