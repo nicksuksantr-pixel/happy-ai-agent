@@ -4,6 +4,7 @@ builder.py — Build Python code เป็น .exe ด้วย PyInstaller
 ใช้ใน HAPPY's page_done — extract code จาก session แล้ว build เป็น .exe
 """
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -225,12 +226,28 @@ def open_python_org() -> None:
 
 
 def _is_test_file(name: str) -> bool:
-    """ไฟล์ test (test_*.py / *_test.py / tests.py / conftest.py)
+    """ไฟล์ test (test_*.py / *_test.py / tests.py / conftest.py / anything under tests/)
     Fix Bug 6: test files ไม่ควรถูกเลือกเป็น main ของ exe — pytest ใน frozen windowed mode
-    จะ crash เพราะ sys.stderr=None (faulthandler.get_stderr_fileno error)"""
-    stem = name.lower()
-    return (stem.startswith("test_") or stem.endswith("_test.py")
-            or stem in ("tests.py", "conftest.py"))
+    จะ crash เพราะ sys.stderr=None (faulthandler.get_stderr_fileno error)
+
+    v2.7.1 (Nick caught live): check BASENAME, not the full path. Previous
+    impl returned False for `tests/test_logic.py` (path doesn't start with
+    "test_", it starts with "tests/") → test file slipped past the filter →
+    builder tried to write it under `tmp/tests/test_logic.py` without
+    creating the `tests/` subdir → FileNotFoundError.
+
+    Also: anything under a top-level `tests/` directory is considered a
+    test file, even if the basename doesn't match — covers e.g.
+    `tests/helpers.py` which isn't a test but lives with them.
+    """
+    # Normalise both slash flavours so "tests/x.py" and "tests\\x.py" hit the same path.
+    norm = name.replace("\\", "/")
+    parts = norm.split("/")
+    if len(parts) > 1 and parts[0].lower() in ("tests", "test"):
+        return True
+    base = parts[-1].lower()
+    return (base.startswith("test_") or base.endswith("_test.py")
+            or base in ("tests.py", "conftest.py"))
 
 
 def detect_project_type(files: dict) -> str:
@@ -333,6 +350,166 @@ def ensure_pywebview_installed() -> Tuple[bool, str]:
     return _ensure_pkg_installed("webview", "pywebview")
 
 
+# ─── v2.7.1: auto-install user-code dependencies before PyInstaller ─────────
+# Without this, every .exe build that imports anything beyond stdlib +
+# customtkinter crashes at runtime with `ModuleNotFoundError`. Nick caught
+# this live: agent wrote `import speedtest`, build "succeeded", running the
+# .exe popped "No module named 'speedtest'".
+
+# Python 3.13 stdlib top-level names — anything not in here is treated as a
+# third-party dependency that needs `pip install`. Keep conservative: false
+# negatives (calling stdlib a third-party) just cause a no-op pip call.
+# Source: `sys.stdlib_module_names` snapshot from CPython 3.13.
+_STDLIB_MODULES = frozenset({
+    "__future__", "_thread", "abc", "argparse", "array", "ast", "asyncio",
+    "atexit", "base64", "bdb", "binascii", "bisect", "builtins", "bz2",
+    "calendar", "cmath", "cmd", "code", "codecs", "codeop", "collections",
+    "colorsys", "compileall", "concurrent", "configparser", "contextlib",
+    "contextvars", "copy", "copyreg", "csv", "ctypes", "curses", "dataclasses",
+    "datetime", "dbm", "decimal", "difflib", "dis", "doctest", "email",
+    "encodings", "ensurepip", "enum", "errno", "faulthandler", "filecmp",
+    "fileinput", "fnmatch", "fractions", "ftplib", "functools", "gc",
+    "genericpath", "getopt", "getpass", "gettext", "glob", "graphlib", "gzip",
+    "hashlib", "heapq", "hmac", "html", "http", "idlelib", "imaplib", "imp",
+    "importlib", "inspect", "io", "ipaddress", "itertools", "json", "keyword",
+    "linecache", "locale", "logging", "lzma", "mailbox", "marshal", "math",
+    "mimetypes", "mmap", "modulefinder", "msilib", "msvcrt", "multiprocessing",
+    "netrc", "nntplib", "nt", "ntpath", "numbers", "opcode", "operator",
+    "optparse", "os", "pathlib", "pdb", "pickle", "pickletools", "pipes",
+    "pkgutil", "platform", "plistlib", "poplib", "posix", "posixpath",
+    "pprint", "profile", "pstats", "pty", "pwd", "py_compile", "pyclbr",
+    "pydoc", "queue", "quopri", "random", "re", "readline", "reprlib",
+    "resource", "rlcompleter", "runpy", "sched", "secrets", "select",
+    "selectors", "shelve", "shlex", "shutil", "signal", "site", "smtplib",
+    "sndhdr", "socket", "socketserver", "spwd", "sqlite3", "ssl", "stat",
+    "statistics", "string", "stringprep", "struct", "subprocess", "sunau",
+    "symtable", "sys", "sysconfig", "syslog", "tabnanny", "tarfile",
+    "telnetlib", "tempfile", "termios", "test", "textwrap", "threading",
+    "time", "timeit", "tkinter", "token", "tokenize", "tomllib", "trace",
+    "traceback", "tracemalloc", "tty", "turtle", "turtledemo", "types",
+    "typing", "unicodedata", "unittest", "urllib", "uu", "uuid", "venv",
+    "warnings", "wave", "weakref", "webbrowser", "winreg", "winsound",
+    "wsgiref", "xdrlib", "xml", "xmlrpc", "zipapp", "zipfile", "zipimport",
+    "zlib", "zoneinfo",
+})
+
+# Map import-name → PyPI-name where they differ. Most match (`requests`,
+# `numpy`, etc.) so we only enumerate the famous mismatches. Anything not
+# in the map gets passed through as-is to pip.
+_IMPORT_TO_PYPI = {
+    "speedtest": "speedtest-cli",
+    "PIL": "Pillow",
+    "cv2": "opencv-python",
+    "sklearn": "scikit-learn",
+    "yaml": "PyYAML",
+    "bs4": "beautifulsoup4",
+    "dotenv": "python-dotenv",
+    "dateutil": "python-dateutil",
+    "OpenSSL": "pyOpenSSL",
+    "Crypto": "pycryptodome",
+    "google": "google-api-python-client",
+    "googleapiclient": "google-api-python-client",
+    "genai": "google-genai",
+    "discord": "discord.py",
+    "telegram": "python-telegram-bot",
+    "MySQLdb": "mysqlclient",
+    "psycopg2": "psycopg2-binary",
+    "wx": "wxPython",
+    "serial": "pyserial",
+    "usb": "pyusb",
+    "win32api": "pywin32",
+    "win32com": "pywin32",
+    "win32gui": "pywin32",
+    "pythoncom": "pywin32",
+}
+
+_IMPORT_RE = re.compile(
+    r"^[ \t]*(?:from[ \t]+(?P<from>[a-zA-Z_][\w.]*)|import[ \t]+(?P<imp>[a-zA-Z_][\w., ]*))",
+    re.MULTILINE,
+)
+
+
+def _scan_imports_for_pip(files: dict) -> list:
+    """Walk all `.py` files in the extracted code, return a sorted list of
+    PyPI package names that look like third-party dependencies.
+
+    v2.7.1: this is the recovery path for agents that forget `requirements.txt`.
+    The directive in `agents.PROJECT_TYPE_DIRECTIVES["desktop_installer"]`
+    REQUIRES the Coder to emit `requirements.txt`, but the LLM doesn't
+    always comply. Static scanning catches obvious cases (`import speedtest`,
+    `import requests`) and triggers a pip install before PyInstaller runs.
+
+    False positives are cheap: pip installs a stdlib-named package only if
+    one happens to exist on PyPI, otherwise we get a harmless "not found"
+    that we ignore.
+    """
+    found = set()
+    for name, content in files.items():
+        if not name.endswith(".py") or not isinstance(content, str):
+            continue
+        for m in _IMPORT_RE.finditer(content):
+            raw = m.group("from") or m.group("imp") or ""
+            for part in raw.split(","):
+                # Take the top-level package — `import foo.bar.baz` → `foo`.
+                pkg = part.strip().split(".")[0].split(" as ")[0].strip()
+                if not pkg or pkg.startswith("_"):
+                    continue
+                if pkg in _STDLIB_MODULES:
+                    continue
+                found.add(pkg)
+    # Local-file imports (the agent's own modules) are also caught by the
+    # scan. Filter them out by checking against the extracted file basenames.
+    local_module_names = {
+        Path(n).stem for n in files
+        if n.endswith(".py") and not _is_test_file(n)
+    }
+    found -= local_module_names
+    # Map to PyPI names.
+    return sorted({_IMPORT_TO_PYPI.get(p, p) for p in found})
+
+
+def _install_user_deps(py: str, files: dict, tmp_path: Path, progress_cb) -> Tuple[bool, str]:
+    """Install the user code's third-party deps into the build Python so
+    PyInstaller can bundle them.
+
+    Strategy (in order):
+      1. If `requirements.txt` was extracted → use it as authoritative
+      2. Else → static-scan all `.py` files for non-stdlib imports
+
+    Returns (ok, message). On failure we DON'T abort the build — PyInstaller
+    might still succeed via fallbacks, and we'd rather ship a half-working
+    .exe than fail entirely. The user gets a hint message either way.
+    """
+    pip_args = None
+    if "requirements.txt" in files and isinstance(files["requirements.txt"], str):
+        req_path = tmp_path / "requirements.txt"
+        req_path.write_text(files["requirements.txt"], encoding="utf-8")
+        pip_args = [py, "-m", "pip", "install", "--no-warn-script-location",
+                    "-r", str(req_path)]
+        progress_cb("📦 Installing from requirements.txt ...")
+    else:
+        deps = _scan_imports_for_pip(files)
+        if not deps:
+            return True, "no third-party imports detected"
+        pip_args = [py, "-m", "pip", "install", "--no-warn-script-location",
+                    *deps]
+        progress_cb(f"📦 Auto-installing {len(deps)} dep(s): {', '.join(deps[:6])}{'...' if len(deps) > 6 else ''}")
+
+    try:
+        proc = subprocess.run(
+            pip_args, capture_output=True, timeout=300, text=True,
+            creationflags=_NO_WINDOW,
+        )
+        if proc.returncode != 0:
+            tail = (proc.stderr or proc.stdout or "")[-400:]
+            return False, f"pip install reported errors (build will continue anyway):\n{tail}"
+        return True, "ok"
+    except subprocess.TimeoutExpired:
+        return False, "pip install timed out after 5 min (build will continue)"
+    except Exception as e:
+        return False, f"pip install error: {str(e)[:200]}"
+
+
 def build_exe_from_session(session_path: Path, progress_cb=None) -> Tuple[bool, str, Optional[bytes], Optional[str]]:
     """
     Build .exe จาก code ใน session — dispatch ตาม project type:
@@ -372,9 +549,27 @@ def build_exe_from_session(session_path: Path, progress_cb=None) -> Tuple[bool, 
     with tempfile.TemporaryDirectory(prefix="happy_build_") as tmp:
         tmp_path = Path(tmp)
         # Fix Bug 6: ข้าม test_*.py — pytest ใน frozen exe crash จาก sys.stderr=None
+        # v2.7.1 (Nick caught live): create parent dirs before write — agents
+        # often emit `package/main.py` style nested layouts. Previous code
+        # silently FileNotFoundError'd when `package/` didn't exist yet, AND
+        # `_is_test_file` was checking full-path so `tests/test_logic.py`
+        # slipped past the skip filter and detonated on write.
         for name, content in files.items():
-            if name.endswith(".py") and not _is_test_file(name):
-                (tmp_path / name).write_text(content, encoding="utf-8")
+            if not name.endswith(".py") or _is_test_file(name):
+                continue
+            target = tmp_path / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+
+        # v2.7.1: install user-code dependencies BEFORE PyInstaller so it
+        # can actually find + bundle them. Without this, `import speedtest`
+        # in the agent's output silently passes the build but explodes at
+        # runtime with `ModuleNotFoundError`. Failure here is non-fatal —
+        # PyInstaller might still produce a .exe via lucky stdlib-only
+        # imports — so we log and continue.
+        deps_ok, deps_msg = _install_user_deps(py, files, tmp_path, _progress)
+        if not deps_ok:
+            _progress(f"⚠ {deps_msg}")
 
         exe_name = Path(main_file).stem
         _progress(f"🔨 กำลัง build {exe_name}.exe ... (~30-60 วินาที)")
