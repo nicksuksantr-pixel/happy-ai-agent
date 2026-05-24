@@ -21,6 +21,45 @@ from extractor import extract_from_session
 _NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 
 
+# v2.7.3 (Nick caught live Tcl-data error): when HAPPY runs as a
+# PyInstaller --onefile bundle, the bootloader sets internal env vars
+# (`_PYI_APPLICATION_HOME_DIR`, `_PYI_PARENT_PROCESS_LEVEL_PID`,
+# `_MEIPASS2`, `_PYI_ARCHIVE_FILE`, ...) that subprocess.run inherits
+# by default. The child PyInstaller invocation then sees those vars
+# and incorrectly resolves Tcl/Tk paths relative to HAPPY's own
+# _MEIPASS instead of the bundled embedded Python's install dir.
+# Symptom on the user's built .exe: `pyi_rth__tkinter` runtime hook
+# raises `Tcl data directory ... \\_tcl_data" not found.` because the
+# build-time data collection silently skipped (no _tcl_data ever made
+# it into the user's .exe).
+#
+# Scrub these inherited vars from every PyInstaller subprocess so the
+# child sees a clean env. Keep PATH + user vars + everything else.
+_PYI_LEAK_ENV_KEYS = (
+    "_MEIPASS2",                       # PyInstaller bootloader internal
+    "_PYI_APPLICATION_HOME_DIR",       # PyInstaller 6.x app home
+    "_PYI_PARENT_PROCESS_LEVEL_PID",   # PyInstaller 6.x parent guard
+    "_PYI_ARCHIVE_FILE",               # PyInstaller archive path
+    "_PYI_SPLASH_IPC",                 # PyInstaller splash screen IPC
+    "TCL_LIBRARY",                     # set by PyInstaller rthook
+    "TK_LIBRARY",                      # set by PyInstaller rthook
+    "TIX_LIBRARY",                     # legacy Tix
+)
+
+
+def _clean_subprocess_env() -> dict:
+    """Return a copy of os.environ with PyInstaller-leaked vars removed.
+
+    Always returns a fresh dict; safe to mutate. Use as `env=` kwarg
+    on subprocess.run when calling PyInstaller (or any tool whose
+    behaviour depends on Tcl/Tk path env vars).
+    """
+    env = os.environ.copy()
+    for k in _PYI_LEAK_ENV_KEYS:
+        env.pop(k, None)
+    return env
+
+
 # Fix P1.3 (2026-05-15 Coddy #4): หา python.exe จริง — ห้ามใช้ sys.executable ใน frozen mode
 # Background: ใน HAPPY.exe (PyInstaller frozen), sys.executable = HAPPY.exe ไม่ใช่ python.exe
 # → subprocess.run([HAPPY.exe, "-m", "PyInstaller", ...]) พังเงียบๆ หรือเปิด HAPPY.exe ซ้อนเอง
@@ -321,11 +360,14 @@ def _ensure_pkg_installed(pkg_import_name: str, pip_name: Optional[str] = None) 
     py = _find_python_executable()
     if not py:
         return False, _no_python_help_message()
+    # v2.7.3: clean env on both probe + install so the child Python
+    # doesn't inherit HAPPY bootloader's Tcl/Tk path overrides.
+    clean_env = _clean_subprocess_env()
     try:
         subprocess.run(
             [py, "-c", f"import {pkg_import_name}"],
             check=True, capture_output=True, timeout=10,
-            creationflags=_NO_WINDOW,
+            creationflags=_NO_WINDOW, env=clean_env,
         )
         return True, "already installed"
     except Exception:
@@ -333,7 +375,7 @@ def _ensure_pkg_installed(pkg_import_name: str, pip_name: Optional[str] = None) 
             subprocess.run(
                 [py, "-m", "pip", "install", pip_name],
                 check=True, capture_output=True, timeout=180, text=True,
-                creationflags=_NO_WINDOW,
+                creationflags=_NO_WINDOW, env=clean_env,
             )
             return True, "installed"
         except subprocess.CalledProcessError as e:
@@ -496,9 +538,11 @@ def _install_user_deps(py: str, files: dict, tmp_path: Path, progress_cb) -> Tup
         progress_cb(f"📦 Auto-installing {len(deps)} dep(s): {', '.join(deps[:6])}{'...' if len(deps) > 6 else ''}")
 
     try:
+        # v2.7.3: clean env so pip's resolver doesn't inherit HAPPY
+        # bootloader's TCL_LIBRARY / _MEIPASS2 / etc.
         proc = subprocess.run(
             pip_args, capture_output=True, timeout=300, text=True,
-            creationflags=_NO_WINDOW,
+            creationflags=_NO_WINDOW, env=_clean_subprocess_env(),
         )
         if proc.returncode != 0:
             tail = (proc.stderr or proc.stdout or "")[-400:]
@@ -611,11 +655,20 @@ def build_exe_from_session(session_path: Path, progress_cb=None) -> Tuple[bool, 
         )
 
         # Fix P1.3: ใช้ py (real python) ไม่ใช่ sys.executable (HAPPY.exe ใน frozen mode)
+        # v2.7.3: `--collect-all tkinter` forces PyInstaller to bundle the
+        # full tkinter package including the Tcl scripts dir at the
+        # canonical `_tcl_data/` location that pyi_rth__tkinter.py expects
+        # at runtime. Without it, the runtime hook fails with
+        # `FileNotFoundError: Tcl data directory ..\_tcl_data not found.`
+        # Trade-off: +~3 MB to user .exe. Worth it — every CTk/tkinter
+        # build needs Tcl data anyway, and being explicit avoids relying
+        # on auto-detection that silently skips on certain Python builds.
         cmd = [
             py, "-m", "PyInstaller",
             "--windowed",       # no console window — clean UX for end user
             "--onefile",
             "--noconfirm",
+            "--collect-all", "tkinter",  # v2.7.3 ship Tcl data with the exe
             "--runtime-hook", str(runtime_hook),  # fix None stdio in windowed mode
             "--name", exe_name,
             "--distpath", str(tmp_path / "dist"),
@@ -624,9 +677,14 @@ def build_exe_from_session(session_path: Path, progress_cb=None) -> Tuple[bool, 
             str(tmp_path / main_file),
         ]
         try:
+            # v2.7.3: scrub PyInstaller-leaked env vars (_MEIPASS2,
+            # _PYI_*, TCL_LIBRARY, TK_LIBRARY) from the child process
+            # — otherwise HAPPY's own bootloader env confuses the
+            # child PyInstaller's Tcl/Tk path resolution. See
+            # `_clean_subprocess_env()` docstring.
             proc = subprocess.run(
                 cmd, capture_output=True, timeout=300, text=True, cwd=str(tmp_path),
-                creationflags=_NO_WINDOW,
+                creationflags=_NO_WINDOW, env=_clean_subprocess_env(),
             )
         except subprocess.TimeoutExpired:
             return False, "Build timeout (เกิน 5 นาที)", None, None
@@ -753,7 +811,7 @@ def _build_web_exe(files: dict, progress_cb) -> Tuple[bool, str, Optional[bytes]
         try:
             proc = subprocess.run(
                 cmd, capture_output=True, timeout=600, text=True, cwd=str(tmp_path),
-                creationflags=_NO_WINDOW,
+                creationflags=_NO_WINDOW, env=_clean_subprocess_env(),
             )
         except subprocess.TimeoutExpired:
             return False, "Web build timeout (เกิน 10 นาที)", None, None
