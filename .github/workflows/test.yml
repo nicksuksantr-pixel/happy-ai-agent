@@ -1,0 +1,73 @@
+name: Tests
+
+# Runs on every push to main + every PR. Keep fast (<3 minutes) so it
+# doesn't slow down Nick's ship rhythm.
+#
+# Test suite is offline-only — NO Gemini API key in CI. Anything that
+# would hit the live API should be moved to a separate `integration`
+# pytest mark and not run here.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:  # manual trigger from GitHub UI
+
+# Cancel duplicate runs on the same branch (e.g. force-pushes during dev).
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: pytest (${{ matrix.os }} / Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false  # keep running other matrix legs if one fails
+      matrix:
+        os: [windows-latest]   # primary platform — that's what Nick ships
+        python-version: ["3.11", "3.13"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install runtime + test deps
+        run: |
+          python -m pip install --upgrade pip
+          # google-genai requires google-auth which pulls in many transitive
+          # deps — install the full runtime so tests can import auth/pipeline.
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run pytest
+        env:
+          # Belt-and-braces: even with safe_user_data fixture, refuse to
+          # let any test see real env vars that look like API keys.
+          HAPPY_AI_UPDATE_TOKEN: ""
+          GEMINI_API_KEY: ""
+        run: pytest -v
+
+  lint:
+    name: ruff lint
+    runs-on: ubuntu-latest  # faster than windows for pure-Python lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install ruff
+        run: pip install ruff
+      - name: Lint
+        # Don't fail CI on lint yet — print issues for visibility only.
+        # Once the codebase is clean we can flip to `ruff check .`
+        # (without `|| true`) to make it a hard gate.
+        run: ruff check . || true

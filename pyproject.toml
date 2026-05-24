@@ -1,0 +1,46 @@
+# HAPPY AI Agent — tool config (pytest, ruff)
+#
+# This file is consumed by:
+#   - pytest (test discovery + path setup)
+#   - ruff (lint, optional)
+#   - GitHub Actions CI workflow (.github/workflows/test.yml)
+#
+# The project itself is NOT a pip-installable package — happy_native.py
+# is the entry point and PyInstaller bundles everything. So no
+# [build-system] / [project] tables; this file is tool config only.
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+# Always recompute sys.path from conftest.py so `import pipeline` works
+# whether pytest is launched from repo root or the tests/ dir.
+addopts = "-ra --strict-markers -q"
+filterwarnings = [
+    # DeprecationWarnings from our own QUOTA_* shim are EXPECTED in
+    # test_config — don't let them error other tests.
+    "default::DeprecationWarning:core.config",
+    # google-genai pulls in deprecation noise from typing — ignore.
+    "ignore::DeprecationWarning:google.*",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# Conservative starter set. We can expand later without breaking CI.
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes (unused imports, undefined names)
+    "W",   # pycodestyle warnings
+    "I",   # isort (import order)
+]
+ignore = [
+    "E501",  # long lines — the codebase has many long Thai/English mixed comments
+    "E402",  # module-level import not at top — happy_native does crash-log tee first
+    "W291", "W293",  # trailing whitespace (don't fail CI on these)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["F401"]  # unused imports common in test fixtures
+"agents.py" = ["E501", "W291"]  # huge prompt strings — leave alone

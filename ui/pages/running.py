@@ -401,9 +401,14 @@ class RunningPage(ctk.CTkFrame):
         total = len(s.current_status)
         done = sum(1 for v in s.current_status.values() if v == "done")
         if total > 0:
-            self.progress.set(done / total)
+            ratio = done / total
+            self.progress.set(ratio)
+            # v2.6.0: explicit percentage in the label — Cos P5
+            # recommendation. Easier to estimate "how far in" than
+            # eyeballing the bar fill against the phase count.
+            pct = int(round(ratio * 100))
             self.progress_label.configure(
-                text=f"Completed {done} / {total} phases"
+                text=f"Completed {done} / {total} phases  ({pct}%)"
             )
 
         running_pid = next(

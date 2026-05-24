@@ -46,6 +46,7 @@ from file_loader import (
     save_attachments_to_session,
 )
 from pipeline import (
+    AuthError,
     PipelineRunner,
     create_session,
     update_meta,
@@ -949,6 +950,21 @@ class HappyApp(ctk.CTk):
                     q.put(("stopped",))
                 else:
                     q.put(("done",))
+            except AuthError as ae:
+                # v2.6.0: 401/PERMISSION_DENIED from Gemini — distinct
+                # signal from generic fatal. UI shows a re-auth modal
+                # + navigates to Settings instead of dumping a stack
+                # trace in a generic "Pipeline error" box.
+                try:
+                    update_meta(
+                        session_path,
+                        status="auth_failed",
+                        failed_at=datetime.now().isoformat(),
+                        last_error=str(ae)[:300],
+                    )
+                except Exception:
+                    pass
+                q.put(("auth_error", str(ae)[:300]))
             except Exception as e:
                 try:
                     update_meta(
@@ -1028,6 +1044,32 @@ class HappyApp(ctk.CTk):
             )
             self.show_page("done")
             self._maybe_apply_queued_update()
+            return
+        elif kind == "auth_error":
+            # v2.6.0: Gemini 401/PERMISSION_DENIED/API_KEY_INVALID.
+            # Distinct from generic fatal: the user can fix this by
+            # pasting a fresh key, so route them straight to Settings
+            # with a clear modal instead of dumping the raw error in
+            # the generic "Pipeline error" box.
+            self.app_state.running = False
+            self.app_state.pipeline_queue = None
+            self.app_state.pipeline_runner = None
+            # Flip auth_ready so the sidebar pill + Settings card both
+            # re-render in "Not connected" state — the saved key is no
+            # longer usable, no point pretending it is.
+            self.app_state.auth_ready = False
+            try:
+                self.sidebar.refresh_auth_status()
+            except Exception:
+                pass
+            messagebox.showerror(
+                "Gemini auth failed",
+                f"Your API key was rejected by Gemini:\n\n{msg[1]}\n\n"
+                f"This usually means the key was revoked, expired, or "
+                f"the wrong key was saved. Paste a fresh key in Settings "
+                f"to re-authenticate.",
+            )
+            self.show_page("settings")
             return
 
         if self.current_page == "running":

@@ -128,6 +128,29 @@ _TRANSIENT_PATTERNS = (
 # Subset ที่บ่งบอก capacity issue ชัดเจน → ใช้ CAPACITY_DELAYS (รอยาวกว่า)
 _CAPACITY_PATTERNS = ("503", "unavailable", "overloaded", "high demand")
 
+# v2.6.0 (Cos P4 recommendation): Gemini auth failures — key revoked,
+# expired, or never valid. These are NOT transient — retrying just burns
+# quota and confuses the user. Detect early, raise AuthError, let the UI
+# surface a re-auth modal.
+_AUTH_ERROR_PATTERNS = (
+    "401",
+    "unauthenticated",
+    "unauthorized",
+    "permission_denied",
+    "permission denied",
+    "api key not valid",
+    "api_key_invalid",
+    "invalid api key",
+)
+
+
+class AuthError(RuntimeError):
+    """Gemini returned an auth-class failure (401 / PERMISSION_DENIED /
+    API_KEY_INVALID). The key has been revoked, expired, or was never
+    valid — retrying will keep failing. The orchestrator catches this
+    and emits an `auth_error` queue event so the UI can stop the
+    pipeline and prompt the user to re-paste their key."""
+
 
 def _is_transient(err: Exception) -> bool:
     msg = str(err).lower()
@@ -138,6 +161,12 @@ def _is_capacity_overload(err: Exception) -> bool:
     """503/UNAVAILABLE/overloaded — Google capacity issue, ใช้ delay ยาวกว่า"""
     msg = str(err).lower()
     return any(p in msg for p in _CAPACITY_PATTERNS)
+
+
+def _is_auth_error(err: Exception) -> bool:
+    """401/PERMISSION_DENIED/API_KEY_INVALID — NOT transient, do not retry."""
+    msg = str(err).lower()
+    return any(p in msg for p in _AUTH_ERROR_PATTERNS)
 
 
 # Fix Bug 8: validate response — กัน silent skip ตอน Gemini ส่ง empty / blocked output
@@ -206,13 +235,24 @@ def _validate_response(response, agent_label: str) -> str:
 def _call_with_retry(fn, *args, **kwargs):
     """เรียก Gemini API พร้อม retry สำหรับ transient errors.
     Bug 21 fix (Coddy #5): แยก delay สำหรับ capacity overload (503) — ใช้ CAPACITY_DELAYS
-    ที่ยาวกว่า เพราะ Google capacity spike clear ช้า (~3-5 นาที)"""
+    ที่ยาวกว่า เพราะ Google capacity spike clear ช้า (~3-5 นาที)
+
+    v2.6.0: auth errors (401/PERMISSION_DENIED/API_KEY_INVALID) are
+    NEVER retried — they're terminal for this run. Raised as `AuthError`
+    so the orchestrator can emit a `auth_error` queue event and the UI
+    can show a re-auth modal instead of silently chewing through retries.
+    """
     last_err = None
     for attempt in range(MAX_RETRIES + 1):
         try:
             return fn(*args, **kwargs)
         except Exception as e:
             last_err = e
+            # Auth errors: terminal, no retry. Wrap in AuthError so the
+            # orchestrator can match on type (not string) up the stack.
+            if _is_auth_error(e):
+                _safe_log(f"[auth-error] terminal: {str(e)[:200]}")
+                raise AuthError(str(e)[:300]) from e
             if attempt >= MAX_RETRIES or not _is_transient(e):
                 raise
             # เลือก delay ตาม error type
