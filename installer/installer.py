@@ -338,6 +338,26 @@ class Installer:
                 progress_cb(3, "เตรียมโฟลเดอร์ติดตั้ง...")
             self.install_dir.mkdir(parents=True, exist_ok=True)
 
+            # v2.7.2 (Nick caught live tkinter ModuleNotFoundError after
+            # upgrade): zip extract MERGES files on top of whatever is
+            # already there, so when v2.7.0/v2.7.1 had
+            # `_internal/python-embed/python313._pth` (Windows embeddable
+            # layout) and v2.7.2 ships a python-build-standalone tree
+            # WITHOUT that `._pth`, the stale file survives. Result: the
+            # new python.exe runs in the OLD `._pth`-restricted sys.path
+            # → can't find `DLLs/_tkinter.pyd` → ModuleNotFoundError.
+            #
+            # Fix: wipe `_internal/python-embed/` before extract. The user
+            # auth.json + sessions live in `~/.happy/` so this is safe.
+            # We don't wipe the whole install_dir because the desktop
+            # shortcut may be in use and re-creating it on every install
+            # triggers an "icon cache miss" flash.
+            stale_embed = self.install_dir / "_internal" / "python-embed"
+            if stale_embed.exists():
+                if progress_cb:
+                    progress_cb(5, "ลบ Python toolchain เดิม...")
+                shutil.rmtree(stale_embed, ignore_errors=True)
+
             payload = get_payload_path()
             if not payload or not payload.exists():
                 return False, f"Payload not found: {payload}"
