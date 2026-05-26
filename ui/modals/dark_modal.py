@@ -39,6 +39,26 @@ def dark_modal(parent, *, title: str, width: int = 480,
     win.transient(parent.winfo_toplevel())
     win.grab_set()
 
+    # v2.8.0 (Cos audit B-22): always release the input grab when the
+    # window is destroyed. Previously the X-button command was the ONLY
+    # path that called grab_release(), so non-closable modals
+    # (closable=False) held the grab forever if destroyed by any other
+    # path (parent close, app exit, programmatic destroy) → entire app
+    # frozen until OS killed the process. Bind to <Destroy> for the
+    # always-safe path.
+    def _release_grab(_event=None):
+        try:
+            win.grab_release()
+        except Exception:
+            pass
+
+    win.bind("<Destroy>", _release_grab)
+    # For non-closable modals we ALSO want WM_DELETE_WINDOW to be a no-op
+    # so the user pressing Alt-F4 doesn't accidentally kill a progress
+    # modal mid-operation.
+    if not closable:
+        win.protocol("WM_DELETE_WINDOW", lambda: None)
+
     # Center over the parent window.
     try:
         parent.winfo_toplevel().update_idletasks()

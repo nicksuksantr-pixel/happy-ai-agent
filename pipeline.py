@@ -4,6 +4,7 @@ pipeline.py - Multi-agent orchestrator with attachments + thorough mode
 import json
 import os
 import tempfile
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -307,7 +308,10 @@ class _TPMTracker:
     Coder phase). Previously the ceiling was frozen at runner construction
     so a mid-run model swap silently kept the old TPM cap.
     """
-    import threading as _threading
+    # v2.8.0 (Cos audit B-02): `threading` is now imported at module top.
+    # Previously this was `import threading as _threading` inside the class
+    # body — harmless thanks to Python's module cache but obscured the
+    # dependency from a glance.
     SAFETY_THRESHOLD = 0.85  # ถ้า usage ใน 60s > 85% ของ ceiling → sleep
     _FALLBACK_TPM = 250_000
 
@@ -322,7 +326,7 @@ class _TPMTracker:
         else:
             self._get_model = get_model
         self._events = []  # list[tuple(ts, total_tokens)]
-        self._lock = self._threading.Lock()
+        self._lock = threading.Lock()
 
     @property
     def TPM_CEILING(self) -> int:
@@ -454,7 +458,18 @@ def call_agent_text_with_min_length(client, model, instruction, input_text,
     text = call_agent_text(client, model, instruction, input_text,
                             agent_label=agent_label,
                             token_log=token_log, tpm_tracker=tpm_tracker)
-    if min_output_tokens <= 0 or not token_log:
+    if min_output_tokens <= 0:
+        return text
+    # v2.8.0 (Cos audit B-03): warn when the min-length contract can't
+    # be verified. Without `token_log` we don't know how many tokens
+    # the model actually emitted — the retry-with-expand loop would
+    # silently skip and short output would slip through.
+    if not token_log:
+        _safe_log(
+            f"[min-length] {agent_label}: token_log=None — cannot verify "
+            f"min_output_tokens={min_output_tokens}, returning draft as-is. "
+            f"(Caller should pass token_log to enable retry-with-expand.)"
+        )
         return text
 
     last_tokens = token_log[-1].get("output_tokens", 0)
@@ -686,6 +701,31 @@ class PipelineRunner:
         callable injected at construction). Letting it stay stale would
         silently lock the run to whatever was selected at start time."""
         return self._get_model() or ""
+
+    # v2.8.0 (Cos audit B-10): public counter accessors so UI pages
+    # don't reach into `runner._tpm` (private). Same data, but the
+    # contract is now explicit + greppable.
+    def current_tpm(self) -> int:
+        """Tokens used in the rolling 60-second window. UI reads this
+        on every tick for the TPM bar."""
+        try:
+            return self._tpm.current_tpm()
+        except Exception:
+            return 0
+
+    def current_tpm_ceiling(self) -> int:
+        """Per-model TPM ceiling for the live model."""
+        try:
+            return self._tpm.TPM_CEILING
+        except Exception:
+            return 250_000
+
+    def request_count(self) -> int:
+        """Total Gemini calls completed this run (length of token_log)."""
+        try:
+            return len(self.token_log)
+        except Exception:
+            return 0
     
     def _check_stop(self):
         return self.should_stop()
@@ -856,8 +896,11 @@ class PipelineRunner:
                 # actually gate.
                 raise
 
-            (session_path / f"{self.phase_index+1:02d}_judge_round{round_num}.md").write_text(
-                judge_output, encoding="utf-8"
+            # v2.8.0 (Cos audit B-01): atomic so a crash mid-write doesn't
+            # leave a half-truncated judge_round.md that next read mis-parses.
+            _atomic_write_text(
+                session_path / f"{self.phase_index+1:02d}_judge_round{round_num}.md",
+                judge_output,
             )
 
             # Fix Bug 10: ใช้ score เทียบ threshold ตรงๆ — ไม่เชื่อ "DECISION: PASS" ของ Judge
@@ -932,8 +975,9 @@ class PipelineRunner:
                     "debugger", f"Debugger (rev {round_num} done)", self.phase_index, current_code,
                 )
                 self.outputs["debugger_revised"] = current_code
+                # v2.8.0 (Cos audit B-01): atomic write — judge-loop debugger revision.
                 rev_filename = f"06b_debugger_revision_{round_num}.md"
-                (session_path / rev_filename).write_text(current_code, encoding="utf-8")
+                _atomic_write_text(session_path / rev_filename, current_code)
                 self._delay()
             except Exception as e:
                 # Fix P2.7: ใช้ _last_phase/_last_phase_label ที่ track ไว้ — ไม่ใช่ hardcode "coder"
@@ -978,8 +1022,11 @@ class PipelineRunner:
             if round_num == 1:
                 save_phase_output(session_path, self.phase_index + 1, "tester", tester_output)
             else:
-                (session_path / f"{self.phase_index+1:02d}_tester_round{round_num}.md").write_text(
-                    tester_output, encoding="utf-8")
+                # v2.8.0 (Cos audit B-01): atomic write — tester round-N output.
+                _atomic_write_text(
+                    session_path / f"{self.phase_index+1:02d}_tester_round{round_num}.md",
+                    tester_output,
+                )
 
             playable, instructions = parse_tester_decision(tester_output)
             self.on_phase_complete("tester", label, self.phase_index, tester_output)
@@ -1017,8 +1064,11 @@ class PipelineRunner:
                 self.on_phase_complete(
                     "coder", f"Coder (tester-rev {round_num} done)", self.phase_index, revised,
                 )
-                (session_path / f"04b_coder_tester_revision_{round_num}.md").write_text(
-                    revised, encoding="utf-8")
+                # v2.8.0 (Cos audit B-01): atomic write — tester-driven coder revision.
+                _atomic_write_text(
+                    session_path / f"04b_coder_tester_revision_{round_num}.md",
+                    revised,
+                )
                 self._delay()
             except Exception as e:
                 self.on_phase_error("coder", f"Coder tester-rev {round_num}", str(e)[:200])
@@ -1069,7 +1119,8 @@ class PipelineRunner:
         # ทำให้ Coder review งานตัวเองและขยาย (ไม่รอจน Tester/Judge ค่อย flag)
         if self._check_stop(): return self.outputs
         draft1 = self.outputs["coder"]
-        (session_path / "04a_coder_pass1.md").write_text(draft1, encoding="utf-8")
+        # v2.8.0 (Cos audit B-01): atomic write — coder pass-1 archival snapshot.
+        _atomic_write_text(session_path / "04a_coder_pass1.md", draft1)
         self.on_phase_start("coder", "Coder (pass 2 — critique+expand)", self.phase_index)
         try:
             improved = call_agent_text_with_min_length(
@@ -1209,7 +1260,14 @@ def load_session(session_path):
             parts = stem.split("_", 1)
             if len(parts) == 2:
                 phase_id = parts[1]
-                outputs[phase_id] = f.read_text(encoding="utf-8")
+                # v2.8.0 (Cos audit B-04): same defensive pattern as
+                # build_combined_txt — don't crash load_session if one phase
+                # file is corrupt; show an inline error placeholder instead.
+                try:
+                    outputs[phase_id] = f.read_text(encoding="utf-8")
+                except (OSError, UnicodeDecodeError) as e:
+                    outputs[phase_id] = f"[ERROR reading {f.name}: {str(e)[:200]}]"
+                    _safe_log(f"[load_session] skipping {f.name}: {e}")
     return {"meta": meta, "outputs": outputs, "path": session_path}
 
 
@@ -1251,6 +1309,14 @@ def build_combined_txt(session_path):
             continue
         phase_id = parts[1]
         header = section_map.get(phase_id, phase_id.upper())
-        content = f.read_text(encoding="utf-8")
+        # v2.8.0 (Cos audit B-04): tolerate corrupt/unreadable phase files
+        # (encoding errors, half-written by a crashed prior run, permission
+        # denied, etc.) so build_combined_txt() can still return SOMETHING
+        # useful for the Done page even when one phase file is broken.
+        try:
+            content = f.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as e:
+            content = f"[ERROR reading {f.name}: {str(e)[:200]}]"
+            _safe_log(f"[build_combined_txt] skipping {f.name}: {e}")
         lines.append(f"{header}:\n{content}\n\n")
     return "".join(lines)

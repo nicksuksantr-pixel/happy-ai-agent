@@ -319,12 +319,12 @@ class StatsPage(ctk.CTkFrame):
         self._mode_thorough_bar.set(thorough / denom)
 
         # Last 7 days.
-        for child in self._week_card.winfo_children():
-            child.destroy()
-        self._week_card.grid_columnconfigure(0, weight=0)
-        self._week_card.grid_columnconfigure(1, weight=1)
-        self._week_card.grid_columnconfigure(2, weight=0)
-
+        # v2.8.0 (Cos audit B-19): previously each _refresh tick destroyed
+        # all 21 widgets in the week card and rebuilt them from scratch.
+        # That caused a visible flicker every refresh + wasted Tk widget
+        # IDs. Now we lazy-init the row widgets ONCE in
+        # `_init_week_row_widgets()` (cached on self._week_widgets) and
+        # update text/bar values in place via `.configure()` + `.set()`.
         day_buckets = {}
         for _, m in rows:
             d = self._row_date(m)
@@ -336,38 +336,58 @@ class StatsPage(ctk.CTkFrame):
              for i in range(7)] + [1]
         )
 
+        if not hasattr(self, "_week_widgets") or not self._week_widgets:
+            self._init_week_row_widgets()
+
         for i in range(7):
             day = today - timedelta(days=(6 - i))
             count = day_buckets.get(day, 0)
             label = "Today" if day == today else day.strftime("%a")
+            is_today = (day == today)
+            color = theme.ACCENT if is_today else theme.TEXT_SUB
+            bar_color = theme.ACCENT if is_today else theme.ACCENT_2
 
-            ctk.CTkLabel(
-                self._week_card, text=label,
-                font=theme.FONT_TINY,
-                text_color=(theme.ACCENT if day == today
-                            else theme.TEXT_SUB),
+            day_lbl, bar_w, count_lbl = self._week_widgets[i]
+            day_lbl.configure(text=label, text_color=color)
+            bar_w.configure(progress_color=bar_color)
+            bar_w.set(count / max_in_week if max_in_week else 0)
+            count_lbl.configure(text=str(count), text_color=color)
+
+    def _init_week_row_widgets(self) -> None:
+        """v2.8.0 (B-19): create the 21 widgets ONCE and keep refs in
+        `self._week_widgets = [(day_lbl, bar, count_lbl), ...]` so
+        `_refresh()` can update them in place instead of destroy/recreate."""
+        for child in self._week_card.winfo_children():
+            child.destroy()
+        self._week_card.grid_columnconfigure(0, weight=0)
+        self._week_card.grid_columnconfigure(1, weight=1)
+        self._week_card.grid_columnconfigure(2, weight=0)
+
+        self._week_widgets = []
+        for i in range(7):
+            day_lbl = ctk.CTkLabel(
+                self._week_card, text="",
+                font=theme.FONT_TINY, text_color=theme.TEXT_SUB,
                 anchor="w", width=46,
-            ).grid(row=i, column=0, sticky="w",
-                   pady=theme.S1)
+            )
+            day_lbl.grid(row=i, column=0, sticky="w", pady=theme.S1)
 
             bar = ctk.CTkProgressBar(
                 self._week_card,
-                progress_color=(theme.ACCENT if day == today
-                                else theme.ACCENT_2),
+                progress_color=theme.ACCENT_2,
                 fg_color=theme.BG_INPUT, height=6, corner_radius=3,
             )
-            bar.set(count / max_in_week if max_in_week else 0)
+            bar.set(0)
             bar.grid(row=i, column=1, sticky="ew",
                      padx=theme.S3, pady=theme.S1)
 
-            ctk.CTkLabel(
-                self._week_card, text=str(count),
-                font=theme.FONT_TINY,
-                text_color=(theme.ACCENT if day == today
-                            else theme.TEXT_SUB),
+            count_lbl = ctk.CTkLabel(
+                self._week_card, text="0",
+                font=theme.FONT_TINY, text_color=theme.TEXT_SUB,
                 anchor="e", width=28,
-            ).grid(row=i, column=2, sticky="e",
-                   pady=theme.S1)
+            )
+            count_lbl.grid(row=i, column=2, sticky="e", pady=theme.S1)
+            self._week_widgets.append((day_lbl, bar, count_lbl))
 
     # ── Parsing helpers ──────────────────────────────────────────────────
     def _row_date(self, meta: dict):

@@ -6,6 +6,7 @@ English.
 """
 from __future__ import annotations
 
+import threading
 import webbrowser
 from tkinter import messagebox
 
@@ -184,15 +185,28 @@ class SettingsPage(ctk.CTkFrame):
         ar = ctk.CTkFrame(c, fg_color="transparent")
         ar.grid(row=4, column=0, sticky="ew", pady=(10, 0))
         ar.grid_columnconfigure((0, 1), weight=1)
+        # v2.8.0 (Cos audit B-08): "Test connection" button used to be
+        # silent about the fact that it consumes 1 request from the
+        # user's daily Gemini quota. The "(uses 1 API call)" label below
+        # the button makes that cost visible up-front. Users on the
+        # free tier (60 RPD) can now decide whether to spend.
+        test_btn_col = ctk.CTkFrame(ar, fg_color="transparent")
+        test_btn_col.grid(row=0, column=0, sticky="ew", padx=(0, 4))
+        test_btn_col.grid_columnconfigure(0, weight=1)
         ctk.CTkButton(
-            ar, text="Test connection",
+            test_btn_col, text="Test connection",
             fg_color=theme.BG_CARD_HOVER, text_color=theme.TEXT,
             border_width=1, border_color=theme.BORDER,
             hover_color=theme.BORDER,
             font=theme.FONT_BODY,
             corner_radius=theme.RADIUS_BUTTON,
             command=self._test_connection,
-        ).grid(row=0, column=0, sticky="ew", padx=(0, 4))
+        ).grid(row=0, column=0, sticky="ew")
+        ctk.CTkLabel(
+            test_btn_col, text="uses 1 API call",
+            font=theme.FONT_TINY, text_color=theme.TEXT_DIM,
+            anchor="center",
+        ).grid(row=1, column=0, sticky="ew", pady=(theme.S1, 0))
         ctk.CTkButton(
             ar, text="Log out (clear key)",
             fg_color=theme.BG_CARD_HOVER, text_color=theme.OFFLINE,
@@ -554,6 +568,9 @@ class SettingsPage(ctk.CTkFrame):
         self._refresh_auth_status()
 
     def _save_api_key(self) -> None:
+        # v2.8.0 (Cos audit B-16): dispatch the live Gemini round-trip
+        # to a daemon thread so the Tk main loop never freezes during
+        # network I/O. UI updates are marshalled back via self.after(0,...).
         key = self.api_key_input.get().strip()
         if not key:
             messagebox.showwarning("Missing key", "Paste an API key first.")
@@ -568,8 +585,29 @@ class SettingsPage(ctk.CTkFrame):
         if err:
             messagebox.showerror("Client error", err)
             return
-        ok, _ = test_connection(client)
+        self.auth_status_label.configure(
+            text="Verifying with Gemini…", text_color=theme.TEXT_SUB,
+        )
+
+        def worker():
+            ok, _ = test_connection(client)
+            models = []
+            if ok:
+                try:
+                    models = list_available_models(client) or []
+                except Exception:
+                    pass
+            self.after(0, lambda: self._on_save_api_key_done(
+                key, client, ok, models
+            ))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_save_api_key_done(self, key: str, client, ok: bool, models: list) -> None:
+        """v2.8.0: marshalled-back completion of the async key validation
+        started in `_save_api_key`. Runs on the Tk main thread."""
         if not ok:
+            self._refresh_auth_status()  # re-paint to original state
             messagebox.showerror(
                 "Connection failed",
                 "Could not reach Gemini with that key. "
@@ -580,19 +618,19 @@ class SettingsPage(ctk.CTkFrame):
         self.app.app_state.client = client
         self.app.app_state.api_key = key
         self.app.app_state.auth_ready = True
-        try:
-            models = list_available_models(client) or []
-            self.app.app_state.available_models = models
-            if models and self.app.app_state.model not in models:
-                self.app.app_state.model = models[0]
+        self.app.app_state.available_models = models
+        if models and self.app.app_state.model not in models:
+            self.app.app_state.model = models[0]
+            try:
                 self.model_var.set(models[0])
-            if models:
+            except Exception:
+                pass
+        if models:
+            try:
                 self.model_menu.configure(values=models)
-        except Exception:
-            pass
+            except Exception:
+                pass
         self.app.app_state.persist()
-        # Successful save: clear input + exit edit mode so the big
-        # "Saved key" card replaces the input row.
         self._editing_key = False
         self.api_key_input.delete(0, "end")
         self._refresh_auth_status()
@@ -603,12 +641,10 @@ class SettingsPage(ctk.CTkFrame):
         )
 
     def _test_connection(self) -> None:
-        # In edit mode with typed input → test the TYPED key (what the
-        # user is about to save). Otherwise → test the saved client.
-        # Without this branch, Test silently verifies the OLD key while
-        # the user thinks they're checking the new one they just typed,
-        # which produces the confusing "Test passed but my new key was
-        # never actually verified" footgun.
+        # v2.8.0 (Cos audit B-16): same async pattern as _save_api_key —
+        # network round-trip on a daemon thread, modal popup on the main
+        # thread via self.after(0). Without this, the entire UI freezes
+        # 500ms-3s on every Test click.
         typed = ""
         if getattr(self, "_editing_key", False):
             try:
@@ -628,15 +664,28 @@ class SettingsPage(ctk.CTkFrame):
             if err:
                 messagebox.showerror("Client error", err)
                 return
-            ok, _ = test_connection(client)
+            client_to_test = client
         else:
             if not self.app.app_state.client:
                 messagebox.showwarning(
                     "Not connected", "Save an API key first."
                 )
                 return
-            ok, _ = test_connection(self.app.app_state.client)
+            client_to_test = self.app.app_state.client
 
+        self.auth_status_label.configure(
+            text="Testing connection…", text_color=theme.TEXT_SUB,
+        )
+
+        def worker():
+            ok, _ = test_connection(client_to_test)
+            self.after(0, lambda: self._on_test_connection_done(ok))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_test_connection_done(self, ok: bool) -> None:
+        """v2.8.0: marshalled-back completion of `_test_connection`."""
+        self._refresh_auth_status()  # re-paint status row
         if ok:
             messagebox.showinfo(
                 "Test passed", "Gemini responded successfully.",
@@ -694,41 +743,79 @@ class SettingsPage(ctk.CTkFrame):
             pass
 
     def _refresh_models(self) -> None:
+        # v2.8.0 (Cos audit B-18): list_available_models is a real
+        # Gemini round-trip. Move off the Tk thread so the dropdown
+        # doesn't freeze the entire app while the list refreshes.
         if not self.app.app_state.client:
             messagebox.showwarning("Not connected", "Connect first.")
             return
+        client = self.app.app_state.client
+
+        def worker():
+            try:
+                models = list_available_models(client) or []
+                err = None
+            except Exception as e:
+                models = []
+                err = str(e)[:200]
+            self.after(0, lambda: self._on_refresh_models_done(models, err))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_refresh_models_done(self, models: list, err) -> None:
+        """v2.8.0: marshalled-back completion of `_refresh_models`."""
+        if err:
+            messagebox.showerror("Refresh failed", err)
+            return
+        self.app.app_state.available_models = models
         try:
-            models = list_available_models(self.app.app_state.client) or []
-            self.app.app_state.available_models = models
             self.model_menu.configure(
                 values=models or [self.app.app_state.model]
             )
-            messagebox.showinfo(
-                "Model list refreshed",
-                f"Found {len(models)} models.",
-            )
-        except Exception as e:
-            messagebox.showerror("Refresh failed", str(e)[:200])
+        except Exception:
+            pass
+        messagebox.showinfo(
+            "Model list refreshed",
+            f"Found {len(models)} models.",
+        )
 
     def _test_model(self) -> None:
+        # v2.8.0 (Cos audit B-17): generate_content is a real billed API
+        # call. Run on a daemon thread so the UI stays responsive AND
+        # warn the user that this consumes 1 request from their RPD quota.
         if not self.app.app_state.client:
             messagebox.showwarning("Not connected", "Connect first.")
             return
-        try:
-            r = self.app.app_state.client.models.generate_content(
-                model=self.app.app_state.model,
-                contents=(
-                    "Reply in one short English sentence confirming "
-                    "you are Gemini and ready for work."
-                ),
-            )
-            reply = (r.text or "").strip()[:300] or "(empty)"
-            messagebox.showinfo(
-                "Model test passed",
-                f"{self.app.app_state.model} is ready.\n\nReply: {reply}",
-            )
-        except Exception as e:
-            messagebox.showerror("Model test failed", str(e)[:300])
+        if not messagebox.askyesno(
+            "Test model — uses 1 API request",
+            f"Send a tiny test prompt to {self.app.app_state.model}?\n\n"
+            f"This consumes 1 request from your daily Gemini quota.",
+        ):
+            return
+        client = self.app.app_state.client
+        model = self.app.app_state.model
+
+        def worker():
+            try:
+                r = client.models.generate_content(
+                    model=model,
+                    contents=(
+                        "Reply in one short English sentence confirming "
+                        "you are Gemini and ready for work."
+                    ),
+                )
+                reply = (r.text or "").strip()[:300] or "(empty)"
+                self.after(0, lambda: messagebox.showinfo(
+                    "Model test passed",
+                    f"{model} is ready.\n\nReply: {reply}",
+                ))
+            except Exception as e:
+                err = str(e)[:300]
+                self.after(0, lambda: messagebox.showerror(
+                    "Model test failed", err,
+                ))
+
+        threading.Thread(target=worker, daemon=True).start()
 
     # ── Pipeline handlers ────────────────────────────────────────────────
     def _on_mode_change(self) -> None:

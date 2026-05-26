@@ -33,6 +33,10 @@ def _setup_crash_log() -> None:
         log_dir = Path.home() / ".happy"
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / "crash.log"
+        # v2.8.0 (Cos audit B-21): intentional — this file handle lives
+        # for the entire process lifetime so stdout/stderr writes from
+        # ANY point in the app's run get teed to crash.log. OS reclaims
+        # the descriptor on process exit. NOT a leak; documented behavior.
         log_file = open(log_path, "a", encoding="utf-8", buffering=1)
         log_file.write(
             f"\n=== Happy AI Agent started at "
@@ -46,8 +50,16 @@ def _setup_crash_log() -> None:
 
 # ─── Single-instance Win32 mutex (playbook §3.2) ──────────────────────────
 _MUTEX_HANDLE = None
-APP_TITLE_PREFIX = "Happy AI Agent"   # must match self.title() prefix
-MUTEX_NAME = "Happy-AI-Agent-SingleInstance"
+# v2.8.0 (Cos audit B-20): import from core.config so there's a single
+# source of truth. Previously these strings were duplicated here AND in
+# core/config.py — if one was bumped without the other, the single-instance
+# detection or window-title matching would silently desync.
+try:
+    from core.config import APP_TITLE_PREFIX, MUTEX_NAME
+except Exception:
+    # Hard fallback so an import error doesn't break the entry point.
+    APP_TITLE_PREFIX = "Happy AI Agent"
+    MUTEX_NAME = "Happy-AI-Agent-SingleInstance"
 
 
 def _ensure_single_instance() -> None:

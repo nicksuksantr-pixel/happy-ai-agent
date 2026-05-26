@@ -23,6 +23,7 @@ import random
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import webbrowser
@@ -32,7 +33,8 @@ from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 import tkinter as tk
-from PIL import Image, ImageDraw, ImageFilter
+from math import sin  # v2.8.0 (Cos audit B-23): hoisted from _render hot path
+from PIL import Image, ImageDraw, ImageFilter, ImageTk
 
 
 def enable_paste(widget):
@@ -283,7 +285,7 @@ class GradientBackground(ctk.CTkCanvas):
             self._cached_gradient = img
         overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         odraw = ImageDraw.Draw(overlay)
-        from math import sin
+        # v2.8.0 (B-23): `sin` imported at module top now.
         pulse = (sin(self._phase * 6.283) + 1) / 2
         glow_alpha = int(20 + 18 * pulse)
         glow_r = min(w, h) // 3
@@ -309,7 +311,7 @@ class GradientBackground(ctk.CTkCanvas):
                 (s["x"] - s["r"], s["y"] - s["r"], s["x"] + s["r"], s["y"] + s["r"]),
                 fill=(255, 240, 200, max(0, min(255, alpha))),
             )
-        from PIL import ImageTk
+        # v2.8.0 (B-23): ImageTk imported at module top now.
         self._photo = ImageTk.PhotoImage(composed)
         if self._gradient_img_id is None:
             self._gradient_img_id = self.create_image(0, 0, anchor="nw", image=self._photo)
@@ -378,6 +380,10 @@ class Installer:
             if progress_cb:
                 progress_cb(86, "บันทึก API key...")
             if self.api_key:
+                # v2.8.0 (Cos audit B-24): atomic write so an installer
+                # crash mid-save doesn't truncate auth.json and silently
+                # lose the user's API key. tempfile + os.replace pattern
+                # — same as core/persistence._atomic_write_text.
                 cfg_dir = Path.home() / ".happy"
                 cfg_dir.mkdir(parents=True, exist_ok=True)
                 cfg_file = cfg_dir / "auth.json"
@@ -388,7 +394,25 @@ class Installer:
                     except Exception:
                         pass
                 existing.update({"api_key": self.api_key.strip()})
-                cfg_file.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+                payload = json.dumps(existing, indent=2)
+                tmp_fd, tmp_path = tempfile.mkstemp(
+                    prefix=".auth.json.", suffix=".tmp", dir=str(cfg_dir),
+                )
+                try:
+                    with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                        f.write(payload)
+                        f.flush()
+                        try:
+                            os.fsync(f.fileno())
+                        except OSError:
+                            pass
+                    os.replace(tmp_path, cfg_file)
+                except Exception:
+                    try:
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass
+                    raise
 
             exe_path = self._find_exe()
             if exe_path:

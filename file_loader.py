@@ -228,15 +228,29 @@ def save_attachments_to_session(session_path: Path, files: List[Tuple[str, bytes
 
 
 def load_attachments_from_session(session_path: Path) -> List[Dict]:
+    # v2.8.0 (Cos audit B-13): the bare `except Exception: continue`
+    # silently swallowed every failure — corrupt files, format-version
+    # mismatches, unknown bugs. Surface them via print so they show up
+    # in HAPPY's crash.log tee + don't hide the root cause. Caller can
+    # still iterate the survivors.
     attach_dir = session_path / "attachments"
     if not attach_dir.exists():
         return []
     files = []
     for f in sorted(attach_dir.iterdir()):
-        if f.is_file():
+        if not f.is_file():
+            continue
+        try:
+            data = f.read_bytes()
+            files.append(load_file_for_gemini(f.name, data))
+        except Exception as e:
             try:
-                data = f.read_bytes()
-                files.append(load_file_for_gemini(f.name, data))
+                print(
+                    f"[file_loader] skipping unreadable attachment "
+                    f"{f.name}: {type(e).__name__}: {str(e)[:200]}",
+                    flush=True,
+                )
             except Exception:
-                continue
+                pass
+            continue
     return files

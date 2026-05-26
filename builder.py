@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 import shutil
 from pathlib import Path
 from typing import Tuple, Optional
@@ -65,6 +66,11 @@ def _clean_subprocess_env() -> dict:
 # → subprocess.run([HAPPY.exe, "-m", "PyInstaller", ...]) พังเงียบๆ หรือเปิด HAPPY.exe ซ้อนเอง
 # → Build .exe ปุ่มกดแล้วไม่มีอะไรเกิดขึ้น
 _PYTHON_EXE_CACHE: Optional[str] = None
+# v2.8.0 (Cos audit B-07): protect the module-level cache against rare
+# concurrent first-call races (e.g. UI thread + background pip-install
+# thread both probing for Python at the same time on first launch).
+# Cheap — uncontended fast path is a single lock acquire.
+_PYTHON_EXE_LOCK = threading.Lock()
 
 
 def _looks_like_python(path: str) -> bool:
@@ -125,8 +131,21 @@ def _find_python_executable() -> Optional[str]:
     Returns: path to python.exe — หรือ None ถ้าหาไม่เจอ
     """
     global _PYTHON_EXE_CACHE
+    # v2.8.0 (Cos audit B-07): lock-guarded fast path. Pre-check outside
+    # the lock to keep the hot path lock-free once cache is warm.
     if _PYTHON_EXE_CACHE:
         return _PYTHON_EXE_CACHE
+    with _PYTHON_EXE_LOCK:
+        if _PYTHON_EXE_CACHE:  # double-checked locking
+            return _PYTHON_EXE_CACHE
+        return _find_python_executable_locked()
+
+
+def _find_python_executable_locked() -> Optional[str]:
+    """Inner function that performs the actual lookup. Caller MUST hold
+    `_PYTHON_EXE_LOCK`. Split out so the lock-acquire pattern reads
+    cleanly above without nesting all the candidate-search logic."""
+    global _PYTHON_EXE_CACHE
 
     # 0. Bundled embedded Python (v2.7.0) — always preferred.
     bundled = _bundled_python_path()
@@ -337,9 +356,24 @@ def find_main_html_file(files: dict) -> Optional[str]:
     return html_files[0]
 
 
+_MAIN_GUARD_RE = re.compile(
+    r"^[ \t]*if\s+__name__\s*==\s*['\"]__main__['\"]",
+    re.MULTILINE,
+)
+
+
 def find_main_python_file(files: dict) -> Optional[str]:
-    """หาไฟล์ Python หลัก — preferable: app.py, main.py, หรือไฟล์ .py แรกที่มี if __name__
-    ข้าม test_*.py — test files ไม่ใช่ entry point"""
+    """หาไฟล์ Python หลัก — preferable: app.py, main.py, หรือไฟล์ .py แรกที่มี
+    ACTUAL `if __name__ == "__main__":` guard.
+
+    v2.8.0 (Cos audit B-06): previously the secondary heuristic was
+    `if '__name__' in files[name] and '__main__' in files[name]` —
+    a string-in test. False positives included:
+      - Docstrings: `'''This module is not meant to be run as __main__.'''`
+      - Comments:    `# Note: don't run __main__ directly`
+      - String literals: `"This is NOT the __main__"`
+    Switched to a regex that requires the actual if-guard line.
+    """
     py_files = [name for name in files if name.endswith(".py") and not _is_test_file(name)]
     if not py_files:
         return None
@@ -347,9 +381,11 @@ def find_main_python_file(files: dict) -> Optional[str]:
     for preferred in ("main.py", "app.py", "__main__.py"):
         if preferred in py_files:
             return preferred
-    # ไฟล์ที่มี if __name__ == "__main__"
+    # Files with a REAL `if __name__ == "__main__":` line (not just the
+    # string in a comment/docstring).
     for name in py_files:
-        if '__name__' in files[name] and '__main__' in files[name]:
+        content = files[name]
+        if isinstance(content, str) and _MAIN_GUARD_RE.search(content):
             return name
     return py_files[0]
 

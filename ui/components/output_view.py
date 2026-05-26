@@ -16,6 +16,13 @@ from pygments.lexers import TextLexer, get_lexer_by_name, guess_lexer
 from pygments.token import Token
 from pygments.util import ClassNotFound
 
+# v2.8.0 (Cos audit B-25): reuse extractor's permissive CODE_BLOCK_RE so
+# both the file extractor AND the on-screen renderer agree on what
+# constitutes a code block. Previously this module had its own stricter
+# regex `r"(```[\w+\-]*\n.*?\n```)"` which rejected blocks that
+# `extract_files_from_text` happily picked up — same agent output, two
+# different parse results, with no obvious reason.
+from extractor import CODE_BLOCK_RE
 from ui import theme
 
 
@@ -112,7 +119,28 @@ def render_output_to_textbox(t: tk.Text, content: str) -> None:
         spacing1=4, spacing3=4,
     )
 
-    parts = re.split(r"(```[\w+\-]*\n.*?\n```)", content, flags=re.DOTALL)
+    # v2.8.0 (B-25): use extractor.CODE_BLOCK_RE for split-by-fence so
+    # the renderer matches the extractor's grammar. The regex was
+    # written with a CAPTURING outer group (lang + content), so
+    # `re.split` returns alternating [text, lang, content, text, ...]
+    # we re-stitch to the same `["text", "```...```", "text", ...]`
+    # shape the rest of this loop expects.
+    raw = CODE_BLOCK_RE.split(content)
+    parts = []
+    i = 0
+    while i < len(raw):
+        if i + 2 < len(raw) and raw[i + 1] is not None:
+            # Text BEFORE block, then the block itself.
+            if raw[i]:
+                parts.append(raw[i])
+            lang = raw[i + 1]
+            code = raw[i + 2]
+            parts.append(f"```{lang}\n{code}\n```")
+            i += 3
+        else:
+            if raw[i]:
+                parts.append(raw[i])
+            i += 1
     for part in parts:
         if part.startswith("```"):
             m = re.match(r"```([\w+\-]*)\n(.*?)\n```", part, re.DOTALL)

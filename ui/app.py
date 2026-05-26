@@ -13,6 +13,7 @@ checklist:
 from __future__ import annotations
 
 import json
+import os
 import queue
 import sys
 import threading
@@ -263,8 +264,8 @@ class HappyApp(ctk.CTk):
         # The QA env var must NOT pollute the persisted preference, so
         # disable last_page persistence for the duration of this initial
         # show_page call.
-        import os as _os
-        env_start = _os.environ.get("HAPPY_START_PAGE")
+        # v2.8.0 (Cos audit B-14): `os` is now imported at module top.
+        env_start = os.environ.get("HAPPY_START_PAGE")
         if env_start:
             start = env_start
         else:
@@ -1023,19 +1024,42 @@ class HappyApp(ctk.CTk):
         self._drain_id = self.after(200, self._drain_pipeline_queue)
 
     def _handle_pipeline_msg(self, msg) -> None:
-        kind = msg[0]
+        # v2.8.0 (Cos audit B-15): tolerate malformed messages instead of
+        # crashing the drain loop. Previously a queue tuple with the wrong
+        # arity would raise ValueError → uncaught → entire drain ticker
+        # silently dies → UI never updates again.
+        # Each branch unpacks defensively via [index]-with-default rather
+        # than positional `_, pid, _, _, output = msg`. New msg types from
+        # the worker simply hit the "unknown kind" warning instead of
+        # blowing up.
+        if not msg:
+            return
+        kind = msg[0] if isinstance(msg, (tuple, list)) else None
+
+        def _get(idx, default=None):
+            try:
+                return msg[idx]
+            except (IndexError, TypeError):
+                return default
+
         if kind == "start":
-            _, pid, *_ = msg
-            self.app_state.current_status[pid] = "running"
+            pid = _get(1)
+            if pid:
+                self.app_state.current_status[pid] = "running"
         elif kind == "complete":
-            _, pid, _, _, output = msg
-            self.app_state.current_status[pid] = "done"
-            self.app_state.current_outputs[pid] = output
+            pid = _get(1)
+            output = _get(4, "")
+            if pid:
+                self.app_state.current_status[pid] = "done"
+                self.app_state.current_outputs[pid] = output
         elif kind == "error":
-            _, pid, *_ = msg
-            self.app_state.current_status[pid] = "error"
+            pid = _get(1)
+            if pid:
+                self.app_state.current_status[pid] = "error"
         elif kind == "judge":
-            _, round_num, decision, score = msg
+            round_num = _get(1, 0)
+            decision = _get(2, "?")
+            score = _get(3, -1)
             self.app_state.current_judge_rounds.append(
                 (round_num, decision, score)
             )
@@ -1052,7 +1076,7 @@ class HappyApp(ctk.CTk):
             self.app_state.pipeline_runner = None
             messagebox.showerror(
                 "Pipeline error",
-                f"The pipeline failed:\n{msg[1]}",
+                f"The pipeline failed:\n{_get(1, 'unknown error')}",
             )
             self.show_page("done")
             self._maybe_apply_queued_update()
@@ -1076,13 +1100,20 @@ class HappyApp(ctk.CTk):
                 pass
             messagebox.showerror(
                 "Gemini auth failed",
-                f"Your API key was rejected by Gemini:\n\n{msg[1]}\n\n"
+                f"Your API key was rejected by Gemini:\n\n{_get(1, 'auth error')}\n\n"
                 f"This usually means the key was revoked, expired, or "
                 f"the wrong key was saved. Paste a fresh key in Settings "
                 f"to re-authenticate.",
             )
             self.show_page("settings")
             return
+        else:
+            # v2.8.0 (Cos audit B-15): unknown msg kind — log + ignore.
+            # Future worker might emit new types; drain shouldn't die.
+            try:
+                print(f"[pipeline-drain] unknown msg kind: {kind!r}", flush=True)
+            except Exception:
+                pass
 
         if self.current_page == "running":
             self.pages["running"].refresh()

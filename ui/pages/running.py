@@ -13,8 +13,10 @@ from tkinter import messagebox
 import customtkinter as ctk
 
 from agents import get_phases_for_mode
+from core.quotas import get_quota  # v2.8.0 (Cos audit B-09): hoisted from __init__
 
 from ui import theme
+from ui.components.agent_row import AgentRowWidgets
 from ui.components.output_view import create_output_text, render_output_to_textbox
 from ui.components.page_header import page_header
 from ui.components.section_card import section_card
@@ -111,7 +113,7 @@ class RunningPage(ctk.CTkFrame):
         # page. The static table in core.quotas is best-effort —
         # Google rotates free-tier ceilings without bumping any
         # version, so claiming a hard "RPD cap 1000/day" is dishonest.
-        from core.quotas import get_quota
+        # v2.8.0 (B-09): get_quota now imported at module top.
         q = get_quota(self.app.app_state.model)
         rate = ctk.CTkFrame(
             outer, fg_color=theme.BG_CARD,
@@ -292,7 +294,7 @@ class RunningPage(ctk.CTkFrame):
         PipelineRunner enforces, but the UI should always reflect what
         the user picked LAST).
         """
-        from core.quotas import get_quota
+        # v2.8.0 (B-09): get_quota imported at module top.
         runner = getattr(self.app.app_state, "pipeline_runner", None)
         if runner is None:
             return
@@ -300,10 +302,9 @@ class RunningPage(ctk.CTkFrame):
         q = get_quota(self.app.app_state.model)
 
         # TPM rolling window.
-        try:
-            current = runner._tpm.current_tpm()
-        except Exception:
-            current = 0
+        # v2.8.0 (Cos audit B-10): use the public accessor instead of
+        # poking at `runner._tpm` directly.
+        current = runner.current_tpm()
         ceiling = max(1, q.tpm)
         ratio = min(1.0, current / ceiling)
         self.tpm_bar.set(ratio)
@@ -320,10 +321,8 @@ class RunningPage(ctk.CTkFrame):
             self.tpm_label.configure(text_color=theme.TEXT_SUB)
 
         # Request count this run + RPD + RPM caps (live with model).
-        try:
-            req_count = len(runner.token_log)
-        except Exception:
-            req_count = 0
+        # v2.8.0 (Cos audit B-10): public accessor.
+        req_count = runner.request_count()
         self.rpd_label.configure(
             text=f"{req_count}  ·  free tier ~{q.rpd}/day (est)"
         )
@@ -390,7 +389,12 @@ class RunningPage(ctk.CTkFrame):
         )
         extra.grid(row=0, column=2, sticky="e", padx=(0, 10))
 
-        self._agent_rows[ph["id"]] = (row, dot, name_btn, extra)
+        # v2.8.0 (Cos audit B-12): typed NamedTuple instead of an
+        # anonymous tuple — consistent shape with done.py.
+        self._agent_rows[ph["id"]] = AgentRowWidgets(
+            row=row, dot=dot, name_btn=name_btn, extra=extra,
+            phase_meta=ph,
+        )
 
     def _select_agent(self, pid: str) -> None:
         self.app.app_state.selected_agent = pid

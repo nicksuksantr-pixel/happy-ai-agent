@@ -1,11 +1,44 @@
 """Done — completion summary + downloads + Build .exe."""
 from __future__ import annotations
 
+import os
+import tempfile
 import threading
 from pathlib import Path
 from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
+
+
+# v2.8.0 (Cos audit B-11): atomic write helper for user-facing downloads.
+# A crash mid-write must NEVER leave the destination as a truncated file —
+# from the user's POV that's "the download silently corrupted my data".
+# Pattern: tempfile in the destination dir → fsync → os.replace (atomic
+# on the same volume). Identical to core/persistence._atomic_write_text.
+def _atomic_write_bytes(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent),
+    )
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except OSError:
+                pass
+        os.replace(tmp_path, path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    _atomic_write_bytes(path, content.encode("utf-8"))
 
 from agents import get_phases_for_mode
 from builder import (
@@ -19,6 +52,7 @@ from pipeline import build_combined_txt, delete_session, load_session
 
 from core import config
 from ui import theme
+from ui.components.agent_row import AgentRowWidgets
 from ui.components.output_view import create_output_text, render_output_to_textbox
 from ui.components.page_header import page_header
 from ui.components.section_card import section_card
@@ -285,7 +319,7 @@ class DonePage(ctk.CTkFrame):
         dot = status_dot(row, color=color, size=10)
         dot.grid(row=0, column=0, padx=(8, 10), pady=8)
 
-        ctk.CTkButton(
+        name_btn = ctk.CTkButton(
             row, text=ph["name"], anchor="w", height=30,
             fg_color="transparent",
             text_color=theme.TEXT_SUB,
@@ -293,9 +327,14 @@ class DonePage(ctk.CTkFrame):
             font=theme.FONT_SMALL,
             corner_radius=theme.RADIUS_SMALL,
             command=lambda pid=ph["id"]: self._select(pid),
-        ).grid(row=0, column=1, sticky="ew")
+        )
+        name_btn.grid(row=0, column=1, sticky="ew")
 
-        self._agent_rows[ph["id"]] = (row, dot, ph)
+        # v2.8.0 (Cos audit B-12): same NamedTuple as running.py so both
+        # pages can share helpers + the shape is greppable.
+        self._agent_rows[ph["id"]] = AgentRowWidgets(
+            row=row, dot=dot, name_btn=name_btn, phase_meta=ph,
+        )
 
     def _select(self, pid: str) -> None:
         self.app.app_state.selected_agent = pid
@@ -305,7 +344,10 @@ class DonePage(ctk.CTkFrame):
         s = self.app.app_state
         sel = s.selected_agent
         if sel and sel in s.current_outputs:
-            name = self._agent_rows[sel][2]["name"] if sel in self._agent_rows else sel
+            # B-12: attribute access on the typed NamedTuple
+            row = self._agent_rows.get(sel)
+            name = (row.phase_meta.get("name") if (row and row.phase_meta)
+                    else sel)
             self.output_title.configure(text=f"OUTPUT — {name}".upper())
             render_output_to_textbox(self.output_text,
                                       s.current_outputs[sel])
@@ -330,9 +372,9 @@ class DonePage(ctk.CTkFrame):
         if not path:
             return
         try:
-            Path(path).write_text(
-                build_combined_txt(sp), encoding="utf-8"
-            )
+            # v2.8.0 (Cos audit B-11): atomic write so a crash/power-loss
+            # mid-write leaves either OLD file or NEW, never half.
+            _atomic_write_text(Path(path), build_combined_txt(sp))
             messagebox.showinfo("Saved", f"Saved to:\n{path}")
         except Exception as e:
             messagebox.showerror("Save failed", str(e))
@@ -360,7 +402,7 @@ class DonePage(ctk.CTkFrame):
         if not path:
             return
         try:
-            Path(path).write_bytes(build_zip(files))
+            _atomic_write_bytes(Path(path), build_zip(files))  # B-11
             messagebox.showinfo("Saved", f"Saved to:\n{path}")
         except Exception as e:
             messagebox.showerror("Save failed", str(e))
@@ -378,7 +420,9 @@ class DonePage(ctk.CTkFrame):
             return
         try:
             combined = build_combined_txt(sp)
-            Path(path).write_bytes(build_full_export_zip(sp, combined))
+            _atomic_write_bytes(  # B-11
+                Path(path), build_full_export_zip(sp, combined),
+            )
             messagebox.showinfo("Saved", f"Saved to:\n{path}")
         except Exception as e:
             messagebox.showerror("Save failed", str(e))
@@ -587,7 +631,7 @@ class DonePage(ctk.CTkFrame):
         if not path:
             return
         try:
-            Path(path).write_bytes(cached["bytes"])
+            _atomic_write_bytes(Path(path), cached["bytes"])  # B-11
             messagebox.showinfo(
                 "Build successful",
                 f"{cached.get('message', '')}\n\nSaved to:\n{path}",
