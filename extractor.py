@@ -220,11 +220,17 @@ def extract_from_session(session_path: Path) -> dict:
     3. coder + frontend — รวมจาก 2 phase (resolved by phase_id, not by
        hardcoded numeric prefix)
     """
-    # ลองหา debugger revision ล่าสุด
-    revisions = sorted([
-        f for f in session_path.iterdir()
-        if f.suffix == ".md" and "debugger_revision" in f.name
-    ], reverse=True)
+    # ลองหา debugger revision ล่าสุด — เรียงตาม "เลขรอบ" (int) ไม่ใช่ชื่อไฟล์
+    # string sort ทำให้ revision_10 แพ้ revision_9 → ได้ code รอบเก่า (audit C-P1a)
+    def _revision_round(f: Path) -> int:
+        m = re.search(r"debugger_revision_(\d+)", f.name)
+        return int(m.group(1)) if m else -1
+
+    revisions = sorted(
+        [f for f in session_path.iterdir()
+         if f.suffix == ".md" and "debugger_revision" in f.name],
+        key=_revision_round, reverse=True,
+    )
 
     if revisions:
         text = revisions[0].read_text(encoding="utf-8")

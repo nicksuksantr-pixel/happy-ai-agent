@@ -19,7 +19,6 @@ from ui import theme
 from ui.components.agent_row import AgentRowWidgets
 from ui.components.output_view import create_output_text, render_output_to_textbox
 from ui.components.page_header import page_header
-from ui.components.section_card import section_card
 from ui.components.status_dot import status_dot
 
 
@@ -223,7 +222,7 @@ class RunningPage(ctk.CTkFrame):
         wrap, self.output_text = create_output_text(out)
         wrap.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
 
-        self._agent_rows: dict = {}  # pid -> (frame, dot, name_label, extra_label)
+        self._agent_rows: dict = {}  # pid -> AgentRowWidgets(row, dot, name_btn, extra, phase_meta)
         self._tick_id = None
         self._pulse_step = 0  # cycles for animated dot on the running row
 
@@ -271,9 +270,9 @@ class RunningPage(ctk.CTkFrame):
             (pid for pid, st in s.current_status.items() if st == "running"),
             None,
         )
-        for pid, (row, dot, name_btn, extra) in self._agent_rows.items():
+        for pid, w in self._agent_rows.items():
             if pid == running_pid:
-                dot.configure(fg_color=target_color)
+                w.dot.configure(fg_color=target_color)
                 # Also pulse the title bar dot.
                 try:
                     self._running_dot.configure(fg_color=target_color)
@@ -420,7 +419,7 @@ class RunningPage(ctk.CTkFrame):
             None,
         )
 
-        for pid, (row, dot, name_btn, extra) in self._agent_rows.items():
+        for pid, w in self._agent_rows.items():
             status = s.current_status.get(pid, "pending")
             color = {
                 "done":    theme.ONLINE,
@@ -428,28 +427,28 @@ class RunningPage(ctk.CTkFrame):
                 "error":   theme.OFFLINE,
                 "pending": theme.TEXT_DIM,
             }.get(status, theme.TEXT_DIM)
-            dot.configure(fg_color=color)
-            name_btn.configure(
+            w.dot.configure(fg_color=color)
+            w.name_btn.configure(
                 text_color=(theme.TEXT if status in ("done", "running")
                             else theme.TEXT_SUB),
             )
 
             if pid == "judge" and s.current_judge_rounds:
                 last = s.current_judge_rounds[-1]
-                extra.configure(text=f"{last[1]} {last[2]}/100",
-                                text_color=theme.ACCENT_2)
+                w.extra.configure(text=f"{last[1]} {last[2]}/100",
+                                  text_color=theme.ACCENT_2)
             elif status == "running":
-                extra.configure(text="running...",
-                                text_color=theme.ACCENT)
+                w.extra.configure(text="running...",
+                                  text_color=theme.ACCENT)
             elif status == "done":
-                extra.configure(text="done", text_color=theme.TEXT_DIM)
+                w.extra.configure(text="done", text_color=theme.TEXT_DIM)
             elif status == "error":
-                extra.configure(text="error", text_color=theme.OFFLINE)
+                w.extra.configure(text="error", text_color=theme.OFFLINE)
             else:
-                extra.configure(text="")
+                w.extra.configure(text="")
 
             # Active row highlight
-            row.configure(
+            w.row.configure(
                 fg_color=(theme.BG_CARD_HOVER if pid == running_pid
                           else "transparent"),
             )
@@ -461,7 +460,7 @@ class RunningPage(ctk.CTkFrame):
         # row, since pipeline_status keys can include phases not in
         # the displayed mode (e.g. revision rounds).
         if running_pid and running_pid in self._agent_rows:
-            running_name = self._agent_rows[running_pid][2].cget("text")
+            running_name = self._agent_rows[running_pid].name_btn.cget("text")
             self.title_label.configure(
                 text=f"Working on  {running_name}",
                 text_color=theme.ACCENT,
@@ -486,7 +485,7 @@ class RunningPage(ctk.CTkFrame):
         s = self.app.app_state
         sel = s.selected_agent
         if sel and sel in s.current_outputs:
-            name = (self._agent_rows[sel][2].cget("text")
+            name = (self._agent_rows[sel].name_btn.cget("text")
                     if sel in self._agent_rows else sel)
             self.output_title.configure(text=f"OUTPUT — {name}".upper())
             render_output_to_textbox(self.output_text,
