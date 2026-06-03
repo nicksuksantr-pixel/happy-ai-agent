@@ -117,14 +117,18 @@ def run_connectivity(model: str) -> int:
     return 0
 
 
-def run_pipeline(task: str, mode: str, delay_override) -> int:
+def run_pipeline(task: str, mode: str, delay_override,
+                 judge_override=None, loops_override=None,
+                 project_type_override=None) -> int:
     """รัน pipeline จริงแบบ headless + พิมพ์ progress รายเฟส"""
     settings = _load_settings()
     model = settings.get("model", "gemini-3.1-flash-lite-preview")
     delay = delay_override if delay_override is not None else int(settings.get("delay", 45))
-    judge_threshold = int(settings.get("judge_threshold", 100))
-    max_judge_loops = int(settings.get("max_judge_loops", 5))
-    project_type = settings.get("project_type", "html")
+    judge_threshold = (judge_override if judge_override is not None
+                       else int(settings.get("judge_threshold", 100)))
+    max_judge_loops = (loops_override if loops_override is not None
+                       else int(settings.get("max_judge_loops", 5)))
+    project_type = project_type_override or settings.get("project_type", "html")
 
     print("=" * 64)
     print(f"PIPELINE TEST — mode={mode} · model={model}")
@@ -215,15 +219,23 @@ def main():
     ap.add_argument("--thorough", metavar="TASK", help="รัน Thorough pipeline กับ task นี้")
     ap.add_argument("--delay", type=int, default=None,
                     help="override phase delay (วินาที) — เร่งเทส")
+    ap.add_argument("--judge", type=int, default=None,
+                    help="override judge_threshold (เร่งเทสไม่ให้ loop ยาว)")
+    ap.add_argument("--loops", type=int, default=None,
+                    help="override max_judge_loops")
+    ap.add_argument("--project-type", dest="project_type", default=None,
+                    help="override project_type (html / desktop_installer)")
     args = ap.parse_args()
 
     settings = _load_settings()
     model = settings.get("model", "gemini-3.1-flash-lite-preview")
 
     if args.quick:
-        return run_pipeline(args.quick, "quick", args.delay)
+        return run_pipeline(args.quick, "quick", args.delay,
+                            args.judge, args.loops, args.project_type)
     if args.thorough:
-        return run_pipeline(args.thorough, "thorough", args.delay)
+        return run_pipeline(args.thorough, "thorough", args.delay,
+                            args.judge, args.loops, args.project_type)
     return run_connectivity(model)
 
 

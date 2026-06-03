@@ -77,18 +77,11 @@ ui_verify_results.json
 qa_final.py
 test_pipeline_e2e.py
 lifecycle_test.py
-WORKIE_NOTES.md
-WEB_TEST_RESULTS.md
-HAPPY_AI_AGENT_HANDOFF.md
-HANDOFF.md
-HANDOFF_ARCHIVE_coddy1to4.md
-ONBOARD_NEW_CODDY.md
-ONBOARD_NEW_COSS.md
-installer-stderr.log
-installer-stdout.log
-se.log
-so.log
-installer-mockup.html
+# Local-only org folders (command_pattern #6 — keep on disk, not in repo).
+# The stale Streamlit-era root docs were archived into _trash/ in v2.8.1.
+_trash/
+user/*
+!user/README.md
 
 # Old/unused inside installer/ (kept on disk, not in repo)
 installer/HAPPY.iss

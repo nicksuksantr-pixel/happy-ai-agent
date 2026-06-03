@@ -2,9 +2,10 @@
 
 **หมายเหตุสำหรับคอสและโค้ดดี้** — นิกใช้ Gemini AI Studio key ฟรี ห้ามเกิน rate limit
 
-## Default Model: `gemini-3.1-flash-lite`
+## Default Model: `gemini-3.1-flash-lite-preview`
 
 นิกตั้งเป็น default สำหรับทุก project ที่ใช้ Gemini ฟรี (2026-05-17)
+(ชื่อ family = `gemini-3.1-flash-lite`; model id จริงใน code/config = `gemini-3.1-flash-lite-preview`)
 ห้ามแนะนำ 2.5 หรือต่ำกว่านี้เป็น default
 
 | Metric | Free Limit |

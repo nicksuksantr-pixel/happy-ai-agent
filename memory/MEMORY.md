@@ -95,6 +95,7 @@
 
 ## หมวด G — หมายเหตุ / สิ่งที่ต้องระวัง (อัปเดตเมื่อพบ)
 
-- ⚠️ **Docs เก่าใน root ล้าสมัย (ยุค Streamlit v1.032, 2026-05-16):** `HANDOFF.md` · `HAPPY_AI_AGENT_HANDOFF.md` · `WORKIE_NOTES.md` · `ONBOARD_NEW_CODDY.md` · `ONBOARD_NEW_COSS.md` · `WEB_TEST_RESULTS.md` — อ้างถึง `app.py`/`happy_desktop.py`/pywebview/port 8501 ที่ไม่มีแล้ว → **ยึด `CLAUDE.md` + code จริงเป็นหลัก** (อาจย้ายเข้า `_trash/` ภายหลังถ้า Nick OK)
+- ✅ **Docs เก่ายุค Streamlit v1.032 ถูก archive แล้ว (v2.8.1):** ย้าย `HANDOFF.md` · `HAPPY_AI_AGENT_HANDOFF.md` · `HANDOFF_ARCHIVE_coddy1to4.md` · `ONBOARD_NEW_CODDY.md` · `ONBOARD_NEW_COSS.md` · `WORKIE_NOTES.md` · `WEB_TEST_RESULTS.md` · `installer-mockup.html` → `_trash/` (git-ignored) → **ยึด `CLAUDE.md` + code จริงเป็นหลัก**
 - ✅ แก้ MASTER Section 1: descriptor HAPPY จาก "Streamlit + Gemini" → "CustomTkinter native + Gemini" (2026-06-04) ให้ตรงกับ rewrite เป็น native CTk
 - ✅ SHARED.md ตรวจแล้ว — ข้อมูลถูกต้อง ไม่ต้องแก้
+- ✅ **v2.8.1 Tester audit (2026-06-04):** 3-agent audit → แก้ 7 bugs (P0 Running-page crash ทุกครั้งที่รัน + drain-ticker, extractor round-order, auth-gate refresh, attachments-in-Quick, Settings-reset desync) · +4 regression tests (pytest 133 passed) · [PR #1](https://github.com/nicksuksantr-pixel/happy-ai-agent/pull/1) · รายละเอียด: `bug/bug_v2.8.1.md` + `log/log_v2.8.1.md`

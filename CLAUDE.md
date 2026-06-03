@@ -16,7 +16,7 @@ UI is a **native CustomTkinter desktop app**. No localhost port, no HTTP server.
 
 ```
 happy_native.py             ← Thin entry: crash log + single-instance mutex + ui.app.main()
-core/                       ← config.py + persistence.py (settings + window_state JSON)
+core/                       ← config.py + persistence.py + quotas.py (settings, window_state, per-model quota table)
 ui/                         ← All UI (theme + 6 pages + components + modals)
   ├── app.py                ← HappyApp, AppState, pipeline drain, auto-update flow
   ├── sidebar.py            ← Logo + 4-nav + auth pill + update pill
@@ -34,6 +34,7 @@ updater.py                  ← GitHub Releases auto-updater (private repo + PAT
 VERSION                     ← Plain-text version (single source of truth)
 HappyAIAgent.spec           ← PyInstaller spec — main app
 tools/make_icon.py          ← Multi-res .ico generator
+tools/test_ai_pipeline.py   ← Headless AI pipeline tester (connectivity / --quick / --thorough)
 installer/installer.py      ← Custom Python installer (dark cosmic UI, 3-phase, sparkles)
 installer/build_installer.py← Build pipeline (zip payload + PyInstaller installer)
 installer/HappyAIAgentSetup.spec  ← Installer PyInstaller spec
@@ -49,6 +50,8 @@ installer/HappyAIAgentSetup.spec  ← Installer PyInstaller spec
 | **Thorough** | 18 phases | ~30-40 min | Complex, needs deep analysis |
 
 **Quality gates:** Tester (runnable?) → Debugger (clean?) → Judge (0-100 score, threshold=100) → auto-loop back to Coder if fails.
+
+**Project type** (Home selector, v2.7.0): `html` (default — single-folder web, double-click `index.html`) or `desktop_installer` (Python CTk + PyInstaller `.exe`). The choice injects `agents.PROJECT_TYPE_DIRECTIVES` into every phase's context so the whole team targets the same deliverable shape. Snapshotted at run start (not live like model).
 
 ---
 
@@ -118,3 +121,11 @@ python installer/build_installer.py
 - **User config**: `~/.happy/auth.json` + `~/.happy/settings.json` + `~/.happy/sessions/`
 - **Crash log**: `~/.happy/crash.log` (frozen-build diagnostics)
 - **Updater log**: `%TEMP%/happy-ai-agent-updater.log`
+
+## 🗂️ Workflow folders (Nick's command_pattern)
+
+- `memory/MEMORY.md` — onboarding snapshot (read first; written from MASTER §5)
+- `log/` · `bug/` · `V-Log.md` — per-version conversation log / bug log / version timeline
+- `_trash/` — archived/unused files (git-ignored; move here, never delete). Stale Streamlit-era docs were archived here in v2.8.1.
+- `user/` — user-facing exports (screenshots, mockups), not app source
+- `tools/test_ai_pipeline.py` — headless end-to-end AI pipeline tester
