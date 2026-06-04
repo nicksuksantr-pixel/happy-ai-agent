@@ -2,7 +2,7 @@
 
 > **Onboarding snapshot** — อ่านไฟล์นี้ก่อนเริ่มงานทุกครั้ง (แทนการกลับไปอ่าน MASTER + SHARED + command_pattern ซ้ำ)
 > สร้างจากขั้นตอน Section 5 ของ MASTER.md
-> **อัปเดตล่าสุด:** 2026-06-04 by Coddy (Claude Code) — sync ตรง HEAD v2.8.1 + บันทึก verified state (build/test/pipeline ผ่าน)
+> **อัปเดตล่าสุด:** 2026-06-04 by Coddy (Claude Code) — v2.8.2 Tester audit+cleanup (188 tests passed · updater integrity P1 · รื้อ junk→_trash)
 
 ---
 
@@ -46,7 +46,7 @@
 **โปรเจคนี้ = native CustomTkinter desktop app** (ไม่ใช่ Streamlit แล้ว — ❌ ห้ามนำ Streamlit/HTTP/localhost กลับมา)
 - Entry: `happy_native.py` → `ui.app.main()`
 - โครงสร้าง: `core/` (config + persistence) · `ui/` (theme + 6 pages) · `pipeline.py` (orchestrator) · `agents.py` (17 agent prompts) · `auth.py` · `builder.py` · `extractor.py` · `file_loader.py` · `updater.py`
-- **เวอร์ชันปัจจุบัน: 2.8.1** (ไฟล์ `VERSION` = single source of truth)
+- **เวอร์ชันปัจจุบัน: 2.8.2** (ไฟล์ `VERSION` = single source of truth)
 - Pipeline: Quick = 11 phases (~15-25 นาที) · Thorough = 18 phases (~30-40 นาที). Quality gates: Tester → Debugger → Judge (0-100, threshold 100) → loop กลับ Coder ถ้าตก
 
 ---
@@ -97,6 +97,11 @@
 
 ## หมวด G — หมายเหตุ / สิ่งที่ต้องระวัง (อัปเดตเมื่อพบ)
 
+- ✅ **v2.8.2 Tester audit + cleanup (2026-06-04):** 3-agent audit → 19 findings → verify code จริง → **แก้ 6 จุด**: P1 **updater integrity** (SHA-256 verify ก่อน auto-install · backward-compat) · web-exe asset 404 (builder `--add-data` subfolder) · attach overwrite→append (home `_pick_files`) · `created_at` phantom key (pipeline `create_session`) · pre-release version compare (updater `is_newer`) · doc-drift agent counts (11 impl+7 kickoff=18) · **+55 tests** (`test_updater.py`+`test_file_loader.py` → **pytest 188 passed**) · รายละเอียด: `bug/bug_v2.8.2.md` + `log/log_v2.8.2.md`
+- 🧹 **Cleanup (v2.8.2):** `_trash/` จัดเป็น 6 หมวดย่อยแล้ว — `old_docs/` (8 docs Streamlit-era ที่เคยอยู่ root `_trash/`) · `old_mockups/` · `old_code/` (app.py.bak3) · `old_logs/` (streamlit/se/so/installer *.log) · `qa_artifacts/` (ui_verify_results.json, ระบบดาวเทียม.html) · `personal/` (Nick_Creative_Portfolio.docx) · root เหลือ source/config 18 ไฟล์
+- 🙋 **2 ข้อรอ Nick ตัดสิน (v2.8.2 — ไม่แก้เอง):** (1) **PAT ฝังใน .exe** — `.env` bundle ใน spec → ใครได้ installer อ่าน PAT ได้ · ทางแก้ = scope PAT แคบ+rotate หรือทำ update-repo เป็น public · (2) **delete session 2-step confirm** ขัด preference single-click แต่เป็น rmtree data-loss → ขอ Nick ยืนยัน
+- ⏸️ **defer (v2.8.2):** Build.exe ไม่อ่าน project_type (done.py) · Tester prompt game-centric (PLAYABLE/BROKEN — เปลี่ยนต้องเทส pipeline) · 1.5-pro token clamp · orphan block_NN · build_combined_txt extra section (เก็บไว้ตั้งใจ — มีประโยชน์) — ดู `bug/bug_v2.8.2.md`
+- 🚀 **v2.8.2 Release:** _(building — แนบ `HappyAIAgent-Setup.zip` + SHA256 ใน release body เพื่อ dogfood integrity gate)_
 - ✅ **Docs เก่ายุค Streamlit v1.032 ถูก archive แล้ว (v2.8.1):** ย้าย `HANDOFF.md` · `HAPPY_AI_AGENT_HANDOFF.md` · `HANDOFF_ARCHIVE_coddy1to4.md` · `ONBOARD_NEW_CODDY.md` · `ONBOARD_NEW_COSS.md` · `WORKIE_NOTES.md` · `WEB_TEST_RESULTS.md` · `installer-mockup.html` → `_trash/` (git-ignored) → **ยึด `CLAUDE.md` + code จริงเป็นหลัก**
 - ✅ แก้ MASTER Section 1: descriptor HAPPY จาก "Streamlit + Gemini" → "CustomTkinter native + Gemini" (2026-06-04) ให้ตรงกับ rewrite เป็น native CTk
 - ✅ SHARED.md ตรวจแล้ว — ข้อมูลถูกต้อง ไม่ต้องแก้

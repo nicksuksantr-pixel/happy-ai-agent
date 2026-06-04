@@ -562,14 +562,25 @@ class HomePage(ctk.CTkFrame):
         )
         if not paths:
             return
-        files = []
+        # v2.8.2 (Tester audit F-A1#4): APPEND + de-dupe instead of overwrite.
+        # The old `attached_files = files` clobbered any prior selection — a
+        # user who attached mockup.png, then re-opened the picker to add
+        # spec.pdf, silently lost mockup.png. Append new picks, skipping names
+        # already attached.
+        existing = self.app.app_state.attached_files or []
+        seen = {name for name, _ in existing}
+        merged = list(existing)
         for p in paths:
             try:
+                name = Path(p).name
+                if name in seen:
+                    continue
                 if is_supported(p):
-                    files.append((Path(p).name, Path(p).read_bytes()))
+                    merged.append((name, Path(p).read_bytes()))
+                    seen.add(name)
             except Exception:
                 pass
-        self.app.app_state.attached_files = files
+        self.app.app_state.attached_files = merged
         self.on_show()
 
     # ── Start ────────────────────────────────────────────────────────────

@@ -597,6 +597,9 @@ class HappyApp(ctk.CTk):
                 info.download_url, dest,
                 progress_cb=None,        # silent
                 cancel_event=cancel_event,
+                # v2.8.2 (Tester audit H-A3#1): verify installer integrity
+                # against the SHA-256 published in the release body (if any).
+                expected_sha256=getattr(info, "sha256", ""),
             )
             # If we got cancelled (e.g. user quit mid-download) don't
             # bother posting back to the destroyed widget — the Tk

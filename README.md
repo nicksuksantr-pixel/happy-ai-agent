@@ -70,7 +70,7 @@ python installer/build_installer.py
 ```
 happy_native.py              ← Native CTk UI
 pipeline.py                  ← Pipeline orchestrator
-agents.py                    ← 17 agent prompts
+agents.py                    ← 18 agent roles (11 impl + 7 kickoff)
 auth.py                      ← Gemini API auth
 builder.py                   ← Build user code → .exe
 extractor.py                 ← Split code blocks

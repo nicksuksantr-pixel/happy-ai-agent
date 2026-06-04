@@ -25,7 +25,7 @@ ui/                         ← All UI (theme + 6 pages + components + modals)
   ├── modals/dark_modal.py  ← Borderless dark CTkToplevel
   └── pages/                ← home, runs, stats, settings, running, done
 pipeline.py                 ← PipelineRunner — orchestrator + retry + TPM watcher
-agents.py                   ← All 17 agent prompts + CONTEXT_MAP
+agents.py                   ← All 18 agent roles (11 impl + 7 kickoff) + CONTEXT_MAP
 auth.py                     ← Gemini API key (~/.happy/auth.json)
 builder.py                  ← Build user code → .exe via PyInstaller (Python + Web)
 extractor.py                ← Split code blocks → files

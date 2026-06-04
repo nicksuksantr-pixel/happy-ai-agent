@@ -16,6 +16,7 @@ Adapted from Happy Photo Organizer's core/updater.py (proven pattern).
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -117,18 +118,33 @@ class UpdateInfo:
     html_url: str
     download_url: str
     size: int
+    # v2.8.2 (Tester audit H-A3#1): expected SHA-256 of the installer asset,
+    # parsed from the release body if published there. "" = none published
+    # (older releases) → integrity check is skipped, behaviour unchanged.
+    sha256: str = ""
 
 
 # ─── Version compare ───
 
 def _parse_version(s: str) -> tuple:
+    """Leading dotted-numeric release as an int tuple. A pre-release suffix
+    (``-beta``, ``rc1`` …) is intentionally ignored here — its precedence is
+    handled separately by ``_is_prerelease`` so it can't pollute the numeric
+    comparison (v2.8.2 Tester audit C-A2#2)."""
     s = s.strip().lstrip("vV")
-    parts = re.split(r"[.\-_+]", s)
-    out = []
-    for p in parts:
-        m = re.match(r"^\d+", p)
-        out.append(int(m.group(0)) if m else 0)
-    return tuple(out) if out else (0,)
+    m = re.match(r"^(\d+(?:\.\d+)*)", s)
+    if not m:
+        return (0,)
+    return tuple(int(x) for x in m.group(1).split("."))
+
+
+def _is_prerelease(s: str) -> bool:
+    """True if `s` carries an alpha/beta/rc-style suffix after the numeric
+    release (e.g. ``2.8.1-beta``, ``2.8.1rc1``, ``2.8.1+build`` → True)."""
+    s = s.strip().lstrip("vV")
+    m = re.match(r"^\d+(?:\.\d+)*", s)
+    rest = s[m.end():] if m else s
+    return bool(rest.strip(".-_+"))
 
 
 def is_newer(current: str, latest: str) -> bool:
@@ -137,7 +153,47 @@ def is_newer(current: str, latest: str) -> bool:
     n = max(len(a), len(b))
     a = a + (0,) * (n - len(a))
     b = b + (0,) * (n - len(b))
-    return b > a
+    if b != a:
+        return b > a
+    # Same numeric release — a pre-release is OLDER than the final release,
+    # so a user on `2.8.1-beta` is correctly offered the final `2.8.1`.
+    return _is_prerelease(current) and not _is_prerelease(latest)
+
+
+# ─── Installer integrity (SHA-256) ───
+
+def parse_expected_sha256(body: str) -> str:
+    """Extract a SHA-256 hex digest from a release body, if one is published.
+
+    Matches a line like ``SHA256: <64-hex>`` / ``sha-256 = <64-hex>``.
+    Returns "" when none is found — callers then skip verification (older
+    releases that predate published hashes still install, unchanged)."""
+    if not body:
+        return ""
+    m = re.search(r"sha-?256[\s:=]*([0-9a-fA-F]{64})", body, re.IGNORECASE)
+    return m.group(1).lower() if m else ""
+
+
+def _file_sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def verify_sha256(path: Path, expected: str) -> bool:
+    """True if `path`'s SHA-256 matches `expected` (case-insensitive).
+
+    An empty `expected` returns True — there is nothing to verify, so the
+    update path behaves exactly as before this check existed. A real
+    mismatch returns False so the caller refuses to launch the installer."""
+    if not expected:
+        return True
+    try:
+        return _file_sha256(path) == expected.strip().lower()
+    except OSError:
+        return False
 
 
 # ─── GitHub Releases API ───
@@ -282,14 +338,16 @@ def check_for_update(current_version: str, timeout: float = 3.0) -> Optional[Upd
     else:
         download_url = str(asset.get("browser_download_url") or "")
 
+    body = str(data.get("body") or "").strip()
     return UpdateInfo(
         version=latest_ver,
         tag=tag,
         name=str(data.get("name") or tag),
-        body=str(data.get("body") or "").strip(),
+        body=body,
         html_url=str(data.get("html_url") or ""),
         download_url=download_url,
         size=int(asset.get("size") or 0),
+        sha256=parse_expected_sha256(body),
     )
 
 
@@ -384,6 +442,7 @@ def download_installer(
     chunk_size: int = 64 * 1024,
     max_attempts: int = 3,
     attempt_timeout: float = 300.0,
+    expected_sha256: str = "",
 ) -> tuple:
     """Download URL → dest with retry + HTTP Range resume.
 
@@ -479,6 +538,23 @@ def download_installer(
                 except OSError:
                     pass
                 last_err = "corrupt zip (bad magic / central directory)"
+                continue
+
+            # v2.8.2 (Tester audit H-A3#1): integrity gate. If the release
+            # published a SHA-256, the bytes must match it before we ever
+            # hand the file to launch_installer_and_exit (which silently
+            # executes it). A mismatch wipes + retries from byte 0 — a
+            # tampered/corrupt-at-source asset never gets run. No published
+            # hash → expected_sha256 == "" → verify_sha256 returns True →
+            # behaviour identical to pre-2.8.2.
+            if not verify_sha256(dest, expected_sha256):
+                _debug_log("  download SHA-256 mismatch — refusing + wiping for retry")
+                try:
+                    dest.unlink(missing_ok=True)
+                    _resume_sidecar_path(dest).unlink(missing_ok=True)
+                except OSError:
+                    pass
+                last_err = "sha256 mismatch (integrity check failed)"
                 continue
 
             # Final commit — drop the sidecar; partial is now whole.

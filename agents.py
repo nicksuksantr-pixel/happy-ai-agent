@@ -1,5 +1,6 @@
 """
-agents.py — Prompts ของ 10 AI agents
+agents.py — Prompts for the AI agent team
+(11 implementation phases [Quick] + 7 kickoff phases [Thorough] = 18 roles)
 
 แต่ละ agent มีบทบาทเฉพาะ และมีคำสั่งห้าม over-engineering
 """

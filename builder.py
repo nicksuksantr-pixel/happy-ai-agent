@@ -841,7 +841,13 @@ def _build_web_exe(files: dict, progress_cb) -> Tuple[bool, str, Optional[bytes]
         ]
         for asset in bundle_assets:
             # PyInstaller --add-data uses os.pathsep separator (Win=`;`, *nix=`:`)
-            cmd.extend(["--add-data", f"{tmp_path / asset}{os.pathsep}."])
+            # v2.8.2 (Tester audit C-A2#1): preserve the asset's subfolder in
+            # the bundle destination. The old `;.` flattened EVERY asset to the
+            # bundle root, so `css/style.css` referenced by index.html as
+            # `css/style.css` landed at root → 404 inside the packaged web .exe.
+            # `str(Path(asset).parent)` is "css" for nested, "." for top-level.
+            dest_dir = str(Path(asset).parent)
+            cmd.extend(["--add-data", f"{tmp_path / asset}{os.pathsep}{dest_dir}"])
         cmd.append(str(launcher_path))
 
         try:

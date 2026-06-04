@@ -60,12 +60,18 @@ def create_session(task, model, settings):
     session_path = SESSIONS_DIR / timestamp
     session_path.mkdir(parents=True, exist_ok=True)
     _atomic_write_text(session_path / "00_task.txt", task)
+    now_iso = datetime.now().isoformat()
     meta = {
         "task": task[:500],
         "model": model,
         "settings": settings,
         "mode": settings.get("mode", "quick"),
-        "started_at": datetime.now().isoformat(),
+        # v2.8.2 (Tester audit F-A1#3): write created_at for real. 5 UI sites
+        # (home/runs/stats) read `created_at` first and only fell back to
+        # `started_at` because this key never existed — a phantom primary key
+        # that any future refactor removing the fallback would silently break.
+        "created_at": now_iso,
+        "started_at": now_iso,
         "status": "running",
         "phases_completed": [],
         "judge_rounds": 0,

@@ -5,6 +5,7 @@
 
 | Version | สรุป |
 |---|---|
+| **v2.8.2** | **Tester audit (3-agent) + cleanup** — **P1 updater integrity** (SHA-256 verify ก่อน auto-install) · web-exe asset 404 (subfolder preserve) · attach overwrite→append · created_at phantom key · pre-release version compare · doc-drift agent counts · **+55 unit tests** (updater + file_loader → 188 passed) · รื้อ junk 11 ไฟล์ root → `_trash/` 6 หมวด |
 | **v2.8.1** | **Tester audit (3-agent)** — แก้ P0 Running-page crash (5-field NamedTuple unpack) + drain-ticker hardening · extractor round-order · auth-gate refresh · attachments-in-Quick · Settings-reset desync · +4 regression tests (133 passed) · archive stale docs → `_trash/` · +headless AI tester (`tools/test_ai_pipeline.py`) |
 | v2.8.0 | Cos audit v2.5.0 sprint — ปิด 24 bugs รอบเดียว (atomic writes, NamedTuple agent rows, public TPM accessors, drain-msg defensive, async auth/model calls) |
 | v2.7.3 | fix built .exe Tcl-data error (`--collect-all tkinter` + env scrub) |
@@ -16,4 +17,4 @@
 | v2.0.x | **rewrite เป็น native CustomTkinter** (เลิก Streamlit/pywebview/HTTP) — แยก `core/` + `ui/` |
 | v1.032 | (legacy) Streamlit + pywebview + Inno Setup installer — docs ยุคนี้ถูก archive ไป `_trash/` แล้ว |
 
-— อัปเดตล่าสุด: 2026-06-04 (v2.8.1, Coddy) · git log = ฉบับ authoritative
+— อัปเดตล่าสุด: 2026-06-04 (v2.8.2, Coddy) · git log = ฉบับ authoritative
