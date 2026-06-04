@@ -25,5 +25,10 @@
 - token เก่ายัง valid อยู่ดีกว่า **อย่า revoke ตอนนี้** — ถ้า revoke client เก่า (v2.8.2-) ที่ยังส่ง `Bearer <token>` จะโดน GitHub ตอบ **401** (invalid token ถูกปฏิเสธก่อนเช็ค public-access) → updater เก่าเงียบ ไม่ได้อัปเดต
 - รอจน user ส่วนใหญ่ย้ายไป v2.8.3+ (ไม่ส่ง token แล้ว) ค่อย revoke ได้
 
-## 🚀 Release
-→ build token-free .exe + installer → tag `v2.8.3` + GitHub Release + `HappyAIAgent-Setup.zip` + SHA256 ใน body · URL ดู `memory/MEMORY.md` §G
+## 🚀 Release (เสร็จแล้ว)
+- build: `HappyAIAgent.exe` **18.2 MB** VERSION 2.8.3 · **ยืนยัน `.env` หายจาก bundle** (`_internal/` ไม่มี .env) · installer `HappyAIAgent-Setup.zip` **121 MB** · ทั้งคู่ exit 0
+- tag `v2.8.3` (target `c29ca79`) + GitHub Release = **Latest** → https://github.com/nicksuksantr-pixel/happy-ai-agent/releases/tag/v2.8.3
+- asset `HappyAIAgent-Setup.zip` uploaded · `SHA256: 685c0d49…d9e37` ใน body
+- ✅ **ยืนยัน token-less:** `curl` GET `/releases/latest` (ไม่มี auth header) → **HTTP 200** → updater no-token path ทำงานบน public repo จริง
+- pytest หลังแก้ = **188 passed**
+
