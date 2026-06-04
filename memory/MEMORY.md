@@ -91,6 +91,8 @@
 
 **❌ Don't:** Vertex AI · กลับไป Streamlit/HTTP/localhost · 2-step confirm delete (Nick ขอ single-click) · เปลี่ยน phase delay default โดยไม่ถาม
 
+**🔀 Git workflow (Nick สั่ง 2026-06-04):** **เลิกใช้ PR** — commit + **push ตรงเข้า `main` ได้เลยตามปกติ ไม่ต้องถาม/รอ approve** · bump version แล้ว build + cut tag + **อัพ GitHub Release ขึ้นเลย** (ดูบทเรียน release flow ในหมวด G)
+
 ---
 
 ## หมวด G — หมายเหตุ / สิ่งที่ต้องระวัง (อัปเดตเมื่อพบ)
