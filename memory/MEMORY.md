@@ -89,7 +89,9 @@
 | 🧠 Coss | Cowork strategy — analysis only ห้ามแก้โค้ด |
 | 🎛️ เวิร์คกี้ | Orchestrator |
 
-**❌ Don't:** Vertex AI · กลับไป Streamlit/HTTP/localhost · 2-step confirm delete (Nick ขอ single-click) · เปลี่ยน phase delay default โดยไม่ถาม
+**❌ Don't:** Vertex AI · กลับไป Streamlit/HTTP/localhost · เปลี่ยน phase delay default โดยไม่ถาม
+
+**🗑️ Delete UX (Nick ยืนยัน 2026-06-04):** action ทั่วไป = **single-click** (Nick ไม่ชอบกดซ้ำ) · **แต่ delete ที่ลบถาวร/data-loss (เช่น delete session = `rmtree`) คง `askyesno` confirm ไว้** — โค้ดปัจจุบัน (runs.py/done.py) **ถูกแล้ว ไม่ใช่ bug** (audit A3#3 v2.8.2 = working-as-intended)
 
 **🔀 Git workflow (Nick สั่ง 2026-06-04):** **เลิกใช้ PR** — commit + **push ตรงเข้า `main` ได้เลยตามปกติ ไม่ต้องถาม/รอ approve** · bump version แล้ว build + cut tag + **อัพ GitHub Release ขึ้นเลย** (ดูบทเรียน release flow ในหมวด G)
 
