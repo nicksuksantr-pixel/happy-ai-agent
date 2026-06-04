@@ -23,12 +23,15 @@
 | pytest baseline (ก่อนแก้) | ✅ 133 passed (HEAD v2.8.1 known-good) |
 | py_compile ไฟล์ที่แก้ (home/app/done/pipeline/builder/updater/agents/file_loader) | ✅ COMPILE_OK |
 | pytest (หลังแก้ + tests ใหม่) | ✅ **188 passed** (133 + 55) · 0 fail |
-| Build .exe (PyInstaller) | (ดู release section) |
+| Build .exe (PyInstaller) | ✅ HappyAIAgent.exe **18.2 MB** · bundled VERSION = 2.8.2 · exit 0 |
+| Build installer + Setup.zip | ✅ HappyAIAgent-Setup.zip **121 MB** · installer exe 5.9 MB · exit 0 |
 
 ## หมายเหตุ
 - audit รอบนี้ codebase สุขภาพดี (2 audit ก่อนหน้าปิด bug ไปเยอะ) — ไม่มี P0 · P1 เดียว = updater integrity
 - ไม่ได้รัน Gemini pipeline จริงรอบนี้ (ประหยัด quota RPD500) — fixes ทั้งหมด **ไม่แตะ AI agent flow** (meta/attach/builder/updater/tests/docs) → pytest + build ครอบเพียงพอ
 - **defer + ต้องให้ Nick ตัดสิน 2 ข้อ** (PAT-in-exe · delete-confirm single-click) — ดู bug log §🙋
 
-## 🚀 Release
-→ build .exe + installer → cut tag `v2.8.2` + GitHub Release + แนบ `HappyAIAgent-Setup.zip` + **SHA256 ใน release body** (dogfood integrity gate) · URL ดูใน `memory/MEMORY.md` §G + V-Log
+## 🚀 Release (เสร็จแล้ว)
+- tag `v2.8.2` (target `3ec92eb`) + GitHub Release = **Latest** → https://github.com/nicksuksantr-pixel/happy-ai-agent/releases/tag/v2.8.2
+- asset `HappyAIAgent-Setup.zip` (121 MB, uploaded) · **SHA256 `6e77f966…37e99a` ใน release body** = dogfood integrity gate (client v2.8.2+ จะ verify update ถัดไปก่อนติดตั้ง)
+- git: commit `3ec92eb` push ตรง main (no PR) · updater ดึงจาก Releases → ผู้ใช้จะได้ 2.8.2
