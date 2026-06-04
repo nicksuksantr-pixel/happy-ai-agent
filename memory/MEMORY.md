@@ -2,7 +2,7 @@
 
 > **Onboarding snapshot** — อ่านไฟล์นี้ก่อนเริ่มงานทุกครั้ง (แทนการกลับไปอ่าน MASTER + SHARED + command_pattern ซ้ำ)
 > สร้างจากขั้นตอน Section 5 ของ MASTER.md
-> **อัปเดตล่าสุด:** 2026-06-04 by Coddy (Claude Code) — v2.8.2 Tester audit+cleanup (188 tests passed · updater integrity P1 · รื้อ junk→_trash)
+> **อัปเดตล่าสุด:** 2026-06-04 by Coddy (Claude Code) — v2.8.3 (repo→public, ปิด PAT-in-exe) ต่อจาก v2.8.2 Tester audit (188 tests · updater integrity · cleanup)
 
 ---
 
@@ -46,7 +46,7 @@
 **โปรเจคนี้ = native CustomTkinter desktop app** (ไม่ใช่ Streamlit แล้ว — ❌ ห้ามนำ Streamlit/HTTP/localhost กลับมา)
 - Entry: `happy_native.py` → `ui.app.main()`
 - โครงสร้าง: `core/` (config + persistence) · `ui/` (theme + 6 pages) · `pipeline.py` (orchestrator) · `agents.py` (17 agent prompts) · `auth.py` · `builder.py` · `extractor.py` · `file_loader.py` · `updater.py`
-- **เวอร์ชันปัจจุบัน: 2.8.2** (ไฟล์ `VERSION` = single source of truth)
+- **เวอร์ชันปัจจุบัน: 2.8.3** (ไฟล์ `VERSION` = single source of truth)
 - Pipeline: Quick = 11 phases (~15-25 นาที) · Thorough = 18 phases (~30-40 นาที). Quality gates: Tester → Debugger → Judge (0-100, threshold 100) → loop กลับ Coder ถ้าตก
 
 ---
@@ -99,9 +99,12 @@
 
 ## หมวด G — หมายเหตุ / สิ่งที่ต้องระวัง (อัปเดตเมื่อพบ)
 
+- 🔓 **repo เป็น PUBLIC แล้ว (v2.8.3, 2026-06-04):** `nicksuksantr-pixel/happy-ai-agent` เปลี่ยนจาก private → **public** (Nick เลือก เพื่อปิด PAT-in-exe audit A3#2) · โค้ด+prompt เปิดสาธารณะแล้ว · **updater ทำงาน token-less** (`_get_token()`="" → public API + `browser_download_url`) · เอา `.env` ออกจาก `HappyAIAgent.spec` แล้ว (build ใหม่ไม่ฝัง token) · git history scan ก่อนเปิด = สะอาด ไม่มี secret หลุด
+  - ⚠️ **อย่า revoke PAT เก่า (`HAPPY_AI_UPDATE_TOKEN`) ตอนนี้** — client เก่า (v2.8.2-) ยังส่ง `Bearer <token>`; ถ้า revoke จะโดน **401** (updater เก่าเงียบ ไม่อัปเดต) · token ตอนนี้ valid-but-worthless (public read เฉยๆ) · รอ user ย้าย v2.8.3+ หมดค่อย revoke
+- ✅ **2 decision ท้าย v2.8.2 audit = ปิดจบแล้ว:** (A3#2 PAT) → repo public (v2.8.3) · (A3#3 delete-confirm) → เก็บ confirm สำหรับ permanent delete (โค้ดเดิมถูก — ดู §F)
 - ✅ **v2.8.2 Tester audit + cleanup (2026-06-04):** 3-agent audit → 19 findings → verify code จริง → **แก้ 6 จุด**: P1 **updater integrity** (SHA-256 verify ก่อน auto-install · backward-compat) · web-exe asset 404 (builder `--add-data` subfolder) · attach overwrite→append (home `_pick_files`) · `created_at` phantom key (pipeline `create_session`) · pre-release version compare (updater `is_newer`) · doc-drift agent counts (11 impl+7 kickoff=18) · **+55 tests** (`test_updater.py`+`test_file_loader.py` → **pytest 188 passed**) · รายละเอียด: `bug/bug_v2.8.2.md` + `log/log_v2.8.2.md`
 - 🧹 **Cleanup (v2.8.2):** `_trash/` จัดเป็น 6 หมวดย่อยแล้ว — `old_docs/` (8 docs Streamlit-era ที่เคยอยู่ root `_trash/`) · `old_mockups/` · `old_code/` (app.py.bak3) · `old_logs/` (streamlit/se/so/installer *.log) · `qa_artifacts/` (ui_verify_results.json, ระบบดาวเทียม.html) · `personal/` (Nick_Creative_Portfolio.docx) · root เหลือ source/config 18 ไฟล์
-- 🙋 **2 ข้อรอ Nick ตัดสิน (v2.8.2 — ไม่แก้เอง):** (1) **PAT ฝังใน .exe** — `.env` bundle ใน spec → ใครได้ installer อ่าน PAT ได้ · ทางแก้ = scope PAT แคบ+rotate หรือทำ update-repo เป็น public · (2) **delete session 2-step confirm** ขัด preference single-click แต่เป็น rmtree data-loss → ขอ Nick ยืนยัน
+- ✅ **2 ข้อที่ v2.8.2 ฝากให้ Nick = ตัดสินแล้ว (v2.8.3):** (1) **PAT ฝังใน .exe** → Nick เลือกทำ repo public (ดูบนสุด §G) · (2) **delete confirm** → เก็บ confirm สำหรับ permanent delete (ดู §F)
 - ⏸️ **defer (v2.8.2):** Build.exe ไม่อ่าน project_type (done.py) · Tester prompt game-centric (PLAYABLE/BROKEN — เปลี่ยนต้องเทส pipeline) · 1.5-pro token clamp · orphan block_NN · build_combined_txt extra section (เก็บไว้ตั้งใจ — มีประโยชน์) — ดู `bug/bug_v2.8.2.md`
 - 🚀 **v2.8.2 ปล่อย Release แล้ว (2026-06-04):** build `HappyAIAgent.exe` 18.2 MB (VERSION 2.8.2) → installer → `HappyAIAgent-Setup.zip` 121 MB → ปัก tag `v2.8.2` (target `3ec92eb`) + GitHub Release = **Latest** ([release](https://github.com/nicksuksantr-pixel/happy-ai-agent/releases/tag/v2.8.2)) · **dogfood:** ใส่ `SHA256: 6e77f966…37e99a` ใน release body → client v2.8.2+ จะ verify integrity ของ update ถัดไป (v2.8.3) ก่อนติดตั้ง
   - ⚠️ **release flow lesson ยังใช้:** ทุก bump version ต้อง cut tag + Release + แนบ `HappyAIAgent-Setup.zip` (updater ดึงจาก Releases ไม่ใช่ main) · **ของใหม่ v2.8.2:** แนบ `SHA256:` ใน body ทุก release ต่อจากนี้ ไม่งั้น integrity gate ไม่ทำงาน (แต่ backward-compat — ไม่มี hash = ข้ามเฉยๆ ไม่พัง)

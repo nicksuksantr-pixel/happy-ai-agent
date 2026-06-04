@@ -15,12 +15,11 @@ datas = [
     ('assets', 'assets'),
 ]
 
-# Bake .env into the bundle if present — carries HAPPY_AI_UPDATE_TOKEN
-# (read-only PAT for the private update repo). Only bundled when the
-# file exists on the build machine. Gitignored.
-import os as _os
-if _os.path.exists('.env'):
-    datas.append(('.env', '.'))
+# v2.8.3 (Tester audit H-A3#2): the update repo is now PUBLIC, so the
+# auto-updater no longer needs a PAT. We deliberately do NOT bundle .env
+# anymore — this closes the shipped-token leak (anyone with the installer
+# could previously extract _internal/.env). updater.py runs token-less:
+# _get_token() returns "" -> public releases API + browser_download_url.
 binaries = []
 # v2.1.0: UI split into ui/ + core/ packages per the new-desktop-project
 # playbook. PyInstaller's static import scan usually catches these via the
