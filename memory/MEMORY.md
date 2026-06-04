@@ -2,7 +2,7 @@
 
 > **Onboarding snapshot** — อ่านไฟล์นี้ก่อนเริ่มงานทุกครั้ง (แทนการกลับไปอ่าน MASTER + SHARED + command_pattern ซ้ำ)
 > สร้างจากขั้นตอน Section 5 ของ MASTER.md
-> **อัปเดตล่าสุด:** 2026-06-04 by Coddy (Claude Code)
+> **อัปเดตล่าสุด:** 2026-06-04 by Coddy (Claude Code) — sync ตรง HEAD v2.8.1 + บันทึก verified state (build/test/pipeline ผ่าน)
 
 ---
 
@@ -46,7 +46,7 @@
 **โปรเจคนี้ = native CustomTkinter desktop app** (ไม่ใช่ Streamlit แล้ว — ❌ ห้ามนำ Streamlit/HTTP/localhost กลับมา)
 - Entry: `happy_native.py` → `ui.app.main()`
 - โครงสร้าง: `core/` (config + persistence) · `ui/` (theme + 6 pages) · `pipeline.py` (orchestrator) · `agents.py` (17 agent prompts) · `auth.py` · `builder.py` · `extractor.py` · `file_loader.py` · `updater.py`
-- **เวอร์ชันปัจจุบัน: 2.8.0** (ไฟล์ `VERSION` = single source of truth)
+- **เวอร์ชันปัจจุบัน: 2.8.1** (ไฟล์ `VERSION` = single source of truth)
 - Pipeline: Quick = 11 phases (~15-25 นาที) · Thorough = 18 phases (~30-40 นาที). Quality gates: Tester → Debugger → Judge (0-100, threshold 100) → loop กลับ Coder ถ้าตก
 
 ---
@@ -99,3 +99,7 @@
 - ✅ แก้ MASTER Section 1: descriptor HAPPY จาก "Streamlit + Gemini" → "CustomTkinter native + Gemini" (2026-06-04) ให้ตรงกับ rewrite เป็น native CTk
 - ✅ SHARED.md ตรวจแล้ว — ข้อมูลถูกต้อง ไม่ต้องแก้
 - ✅ **v2.8.1 Tester audit (2026-06-04):** 3-agent audit → แก้ 7 bugs (P0 Running-page crash ทุกครั้งที่รัน + drain-ticker, extractor round-order, auth-gate refresh, attachments-in-Quick, Settings-reset desync) · +4 regression tests (pytest 133 passed) · [PR #1](https://github.com/nicksuksantr-pixel/happy-ai-agent/pull/1) · รายละเอียด: `bug/bug_v2.8.1.md` + `log/log_v2.8.1.md`
+- ✅ **v2.8.1 verified state (รันจริง ไม่เดา — current HEAD = known-good):** pytest **133 passed** · Quick pipeline จริง **12/12 เฟส · Judge 100/100** (~4.4 นาที, 7 ไฟล์) · Build .exe สำเร็จ (HappyAIAgent.exe 17.3 MB, exit 0)
+- ⏸️ **ที่ verify แล้วจงใจไม่แก้:** `pipeline.py:1142` Coder pass-2 ใช้ `phase_index` (overwrite slot 04 ตั้งใจ, pass-1 archive แยก) = false positive · TPM under-sleep / CODE_BLOCK_RE nested fence / builder progress_cb None-guard = low-pri self-correcting
+- 🚀 **v2.8.1 ปล่อย Release แล้ว (2026-06-04):** ปัก tag `v2.8.1` + GitHub Release + asset `HappyAIAgent-Setup.zip` (121MB, 2.8.1) → **Latest** ([release](https://github.com/nicksuksantr-pixel/happy-ai-agent/releases/tag/v2.8.1))
+- ⚠️ **บทเรียนสำคัญ (release flow):** merge เข้า `main` ≠ ผู้ใช้ได้อัปเดต — `updater.py` ดึงจาก **GitHub Releases** (asset `HappyAIAgent-Setup.zip`) ไม่ใช่ branch main → **ทุกครั้งที่ bump version + merge ต้อง cut tag + Release + แนบ Setup.zip** ไม่งั้นผู้ใช้ค้าง (v2.8.1 P0 fix เคยค้างเพราะลืมขั้นนี้) · *gh release create `--target` ต้องเป็นชื่อ branch หรือ full SHA — short SHA → HTTP 422*

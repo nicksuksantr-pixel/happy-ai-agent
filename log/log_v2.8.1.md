@@ -29,3 +29,8 @@
 - false positive 1 ข้อ (pipeline.py:1142 pass-2 numbering) — verify แล้วถูกต้อง ไม่แก้
 - low-pri ที่ไม่แก้: TPM under-sleep (self-correcting via retry), CODE_BLOCK_RE nested fence, builder progress_cb None-guard
 - โจทย์เทส html ได้ main.py ติดมาด้วย (minor — extractor เก็บทุก code block) ไม่กระทบ gate (Judge 100)
+
+## 🚀 Release publish (2026-06-04, follow-up — Nick เห็น GitHub ยัง 2.8.0)
+- **อาการ:** main = 2.8.1 แล้ว (PR #1 merge) แต่ไม่มี **tag/Release** v2.8.1 → GitHub Releases + `updater.py` ยังเห็น 2.8.0 → ผู้ใช้แอป **ค้างที่ 2.8.0** (P0 fix ไปไม่ถึงผู้ใช้)
+- **แก้:** build installer ใหม่ (`dist/HappyAIAgent-Setup.zip` 121 MB, VERSION 2.8.1) → ปัก tag `v2.8.1` ที่ main `45132b8` → `gh release create` + แนบ asset → **Latest = v2.8.1** ([release](https://github.com/nicksuksantr-pixel/happy-ai-agent/releases/tag/v2.8.1))
+- **บทเรียน:** merge เข้า main ≠ ปล่อยอัปเดต — `updater.py` ดึงจาก **GitHub Releases** ไม่ใช่ branch → ทุกครั้งที่ bump version ต้องตามด้วย **cut tag + Release + แนบ `HappyAIAgent-Setup.zip`** เสมอ · (`gh release create --target` ต้องใช้ชื่อ branch หรือ full SHA — short SHA = HTTP 422)
