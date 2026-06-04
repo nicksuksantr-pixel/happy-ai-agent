@@ -99,8 +99,14 @@ sessions/                    ← User outputs (gitignored)
 ## 🧪 Test commands
 
 ```powershell
-python qa_final.py            # Syntax/import check (no API calls)
-python test_pipeline_e2e.py   # Full e2e test (uses ~12 API calls)
+# Unit + integration suite (no API calls)
+python -m pytest -q
+
+# Headless end-to-end AI tester (reads ~/.happy/auth.json)
+python tools/test_ai_pipeline.py                      # connectivity only (~2 calls)
+python tools/test_ai_pipeline.py --quick "<task>"     # full Quick pipeline (11 phases)
+# bounded/fast run (lower delay + judge threshold + loops):
+python tools/test_ai_pipeline.py --quick "<task>" --delay 6 --judge 80 --loops 2 --project-type html
 ```
 
 ---

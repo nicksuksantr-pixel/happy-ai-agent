@@ -55,7 +55,6 @@ from ui import theme
 from ui.components.agent_row import AgentRowWidgets
 from ui.components.output_view import create_output_text, render_output_to_textbox
 from ui.components.page_header import page_header
-from ui.components.section_card import section_card
 from ui.components.status_dot import status_dot
 from ui.modals.dark_modal import dark_modal
 

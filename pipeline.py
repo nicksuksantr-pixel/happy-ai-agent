@@ -106,7 +106,7 @@ def save_phase_output(session_path, phase_index, phase_id, content):
         pass
 
 
-# Retry mechanism — กัน Vertex AI server disconnect / 503 / timeout
+# Retry mechanism — กัน Gemini API server disconnect / 503 / timeout
 MAX_RETRIES = 5  # Bug 21 fix (Coddy #5): bumped from 3 → 5 — Pro 3.1 demand spikes need more attempts
 RETRY_DELAYS = [5, 15, 30, 60, 120]  # exponential-ish backoff (วินาที) — last attempt waits 2 min
 # Bug 21: เพิ่ม delay สำหรับ capacity overload (503/UNAVAILABLE) — Google capacity spike มัก clear ใน 3-5 นาที
@@ -1139,6 +1139,11 @@ class PipelineRunner:
                 tpm_tracker=self._tpm,
             )
             self.outputs["coder"] = improved
+            # NOTE: pass `self.phase_index` (no +1) ON PURPOSE — pass-2
+            # overwrites the pass-1 `NN_coder.md` slot with the improved
+            # draft (pass-1 is separately archived as 04a_coder_pass1.md).
+            # Using +1 would collide with the Frontend slot and leave the
+            # un-improved pass-1 as the canonical coder file (audit note).
             save_phase_output(session_path, self.phase_index, "coder", improved)
             self.on_phase_complete("coder", "Coder (pass 2 done)", self.phase_index, improved)
             self._delay()

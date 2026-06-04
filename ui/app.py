@@ -330,6 +330,16 @@ class HappyApp(ctk.CTk):
                 settings._refresh_auth_status()
         except Exception:
             pass
+        # v2.8.1: also re-run the Home page's auth gate if it's the
+        # current page, so the Run button disables when a format-valid-
+        # but-junk key is rejected by the live API ping (audit C-P1b).
+        # Without this the button stayed enabled until the user navigated
+        # away from Home and back.
+        try:
+            if self.current_page == "home":
+                self.pages["home"].on_show()
+        except Exception:
+            pass
 
     # ── Window geometry persistence ──────────────────────────────────────
     def _on_window_configure(self, event) -> None:
@@ -880,7 +890,12 @@ class HappyApp(ctk.CTk):
     # ── Pipeline lifecycle ───────────────────────────────────────────────
     def start_pipeline(self, task: str, settings: dict) -> None:
         session_path = create_session(task, self.app_state.model, settings)
-        if self.app_state.attached_files:
+        # Attachments only reach Gemini through the Thorough-mode
+        # doc_analyst multimodal phase; Quick mode has no such call.
+        # Saving them on a Quick run just flags has_attachments=true on a
+        # run that silently ignores them (audit F-P2a) — so gate on mode.
+        if (self.app_state.attached_files
+                and settings.get("mode") == "thorough"):
             save_attachments_to_session(
                 session_path, self.app_state.attached_files
             )
@@ -1018,7 +1033,19 @@ class HappyApp(ctk.CTk):
             try:
                 while True:
                     msg = q.get_nowait()
-                    self._handle_pipeline_msg(msg)
+                    # v2.8.1: isolate per-message handling so a bug in a
+                    # handler (or a page.refresh() exception) can't escape
+                    # the drain loop and skip the reschedule below — that
+                    # would permanently freeze ALL further UI updates for
+                    # the rest of the process (audit C-P0 follow-up).
+                    try:
+                        self._handle_pipeline_msg(msg)
+                    except Exception as _e:
+                        try:
+                            print(f"[pipeline-drain] handler error: {_e}",
+                                  flush=True)
+                        except Exception:
+                            pass
             except queue.Empty:
                 pass
         self._drain_id = self.after(200, self._drain_pipeline_queue)

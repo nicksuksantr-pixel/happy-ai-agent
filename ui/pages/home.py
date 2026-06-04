@@ -337,6 +337,22 @@ class HomePage(ctk.CTkFrame):
     def on_show(self) -> None:
         s = self.app.app_state
 
+        # Keep the "Build as" + "Mode" segmented buttons in sync with
+        # app_state every time Home is shown — e.g. after a Settings
+        # "Reset to defaults" changed project_type/pipeline_mode behind
+        # our back. Without this the buttons keep their old selection while
+        # the next run uses the (correct) app_state value — a silent
+        # UI/state divergence (audit F-P1). Programmatic .set() on a
+        # CTkSegmentedButton variable updates the visual only; it does NOT
+        # fire the command callback, so there's no recursion here.
+        try:
+            self.project_type_var.set(self._pt_label(s.project_type))
+            self.mode_var.set(
+                "Thorough" if s.pipeline_mode == "thorough" else "Quick"
+            )
+        except Exception:
+            pass
+
         # Auth gate sits in dedicated row 2 (between divider at row 1 and
         # compose card at row 3) — no overlap, gridded on demand.
         if not s.auth_ready:

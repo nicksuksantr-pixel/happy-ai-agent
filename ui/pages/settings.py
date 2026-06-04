@@ -850,6 +850,17 @@ class SettingsPage(ctk.CTkFrame):
             setattr(self.app.app_state, k, v)
         self.app.app_state.persist()
         self.model_var.set(self.app.app_state.model)
+        # v2.8.1: also re-sync the dropdown's value LIST — otherwise the
+        # reset default can show as selected while not actually being in
+        # the menu's own list (audit F-P2b).
+        try:
+            models = (self.app.app_state.available_models
+                      or [self.app.app_state.model])
+            if self.app.app_state.model not in models:
+                models = [self.app.app_state.model] + models
+            self.model_menu.configure(values=models)
+        except Exception:
+            pass
         self.mode_var.set(self.app.app_state.pipeline_mode)
         self.delay_slider.set(self.app.app_state.delay)
         self.judge_slider.set(self.app.app_state.judge_threshold)
